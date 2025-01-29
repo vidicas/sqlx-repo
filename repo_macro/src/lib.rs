@@ -133,12 +133,15 @@ fn convert_async_func(item: &ImplItem, with_body: bool) -> proc_macro2::TokenStr
             };
             let body = match with_body {
                 false => quote! {},
-                true => quote! {
+                true => quote! { 
                     {
-                        unimplemented!()
+                        Box::pin(async move {
+                            #block
+                        })       
                     }
-                },
+                }
             };
+            println!("body: {body}");
             return quote! {
                 fn #name<#(#generics,)*>(#(#inputs,)*) -> #output #body
             };
