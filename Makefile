@@ -1,4 +1,3 @@
 .PHONY: fmt
 fmt:
-	cargo fmt && cargo clippy --fix --allow-dirty \
-	&& cargo fmt && cargo clippy --fix --allow-dirty -p repo_macro
+	cargo fmt --all && cargo clippy --fix --allow-dirty
