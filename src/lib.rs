@@ -32,7 +32,8 @@ impl<D: sqlx::Database> DatabaseRepository<D> {
 pub mod prelude {
     pub use super::DatabaseRepository;
     pub use chrono;
-    pub use repo_derive_macro::repo;
+    pub use futures;
+    pub use repo_macro::repo;
     pub use sea_query;
     pub use sea_query_binder;
     pub use serde_json;

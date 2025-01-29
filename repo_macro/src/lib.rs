@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{spanned::Spanned, ImplItem, ImplItemFn, ItemImpl, Path, ReturnType, Signature};
+use syn::{spanned::Spanned, ImplItem, ImplItemFn, ItemImpl, Path, ReturnType};
 
 fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
-    quote!{ 
-        pub async fn new_repository(database_url: &str) -> 
+    quote! {
+        pub async fn new_repository(database_url: &str) ->
             Result<Box<dyn #trait_name>, Box<dyn std::error::Error + Send + Sync + 'static>>
         {
             let mut database_url = url::Url::parse(database_url)?;
@@ -52,7 +52,10 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
     }
 }
 
-fn setup_generics_and_where_clause(input: &ItemImpl, trait_name: &Path) -> proc_macro2::TokenStream {
+fn setup_generics_and_where_clause(
+    input: &ItemImpl,
+    trait_name: &Path,
+) -> proc_macro2::TokenStream {
     let type_name = &*input.self_ty;
     let items = input
         .items
@@ -103,7 +106,11 @@ fn setup_generics_and_where_clause(input: &ItemImpl, trait_name: &Path) -> proc_
 }
 
 fn convert_async_func(item: &ImplItem, with_body: bool) -> proc_macro2::TokenStream {
-    if let ImplItem::Fn(ImplItemFn{ ref sig, ref block, ..}) = item {
+    if let ImplItem::Fn(ImplItemFn {
+        ref sig, ref block, ..
+    }) = item
+    {
+        println!("{item:#?}");
         if sig.asyncness.is_some() {
             let name = &sig.ident;
             let generics = sig
@@ -118,7 +125,7 @@ fn convert_async_func(item: &ImplItem, with_body: bool) -> proc_macro2::TokenStr
                 .map(|input| input.to_token_stream())
                 .collect::<Vec<proc_macro2::TokenStream>>();
             let output = match &sig.output {
-                ReturnType::Default => quote!{ () },
+                ReturnType::Default => quote! { () },
                 ReturnType::Type(_, ty) => ty.to_token_stream(),
             };
             let output = quote! {
@@ -126,14 +133,18 @@ fn convert_async_func(item: &ImplItem, with_body: bool) -> proc_macro2::TokenStr
             };
             let body = match with_body {
                 false => quote! {},
-                true => sig.block.to_token_stream(),
+                true => quote! {
+                    {
+                        unimplemented!()
+                    }
+                },
             };
             return quote! {
                 fn #name<#(#generics,)*>(#(#inputs,)*) -> #output #body
-            }
+            };
         }
-   } 
-   return quote! { #item }
+    }
+    quote! { #item }
 }
 
 #[proc_macro_attribute]
