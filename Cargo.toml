@@ -8,7 +8,7 @@ chrono = "0.4.39"
 futures = "0.3.31"
 repo_macro = { path = "./repo_macro" }
 sea-query = "0.32.1"
-sea-query-binder = { version = "0.7.0", features = ["with-uuid", "sqlx", "sqlx-mysql", "sqlx-postgres", "sqlx-sqlite", "chrono", "with-time", "with-json", "with-chrono"] }
+sea-query-binder = { version = "0.7.0", features = ["with-uuid", "sqlx", "sqlx-mysql", "sqlx-postgres", "sqlx-sqlite", "chrono", "with-time", "with-json", "with-chrono", "runtime-tokio-rustls"] }
 serde_json = "1.0.137"
 sqlx = "0.8.3"
 url = "2.5.4"
