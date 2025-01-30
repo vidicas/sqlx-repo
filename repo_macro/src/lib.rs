@@ -1,6 +1,9 @@
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{spanned::Spanned, ImplItem, ImplItemFn, ItemImpl, Path, ReturnType};
+use syn::{
+    parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, Ident, ImplItem,
+    ItemImpl, Path, PathArguments, ReturnType, Signature, Token, Type, TypeParam,
+};
 
 fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
     quote! {
@@ -54,18 +57,13 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
     }
 }
 
-fn setup_generics_and_where_clause(
-    input: &ItemImpl,
-    trait_name: &Path,
-) -> proc_macro2::TokenStream {
-    let type_name = &*input.self_ty;
-    let items = input
-        .items
-        .iter()
-        .map(|item| convert_async_func(item, true))
-        .collect::<Vec<proc_macro2::TokenStream>>();
-    let where_clause = quote! {
-        D: sqlx::Database,
+/// Rewrite impl block for repository:
+/// - Add generic D and where clause
+/// - Rewrite async funcs into type-erased futures
+/// - Preserver original spans
+fn setup_generics_and_where_clause(input: &mut ItemImpl) {
+    let where_clause = parse_quote! {
+        where D: sqlx::Database,
         // Types, that Database should support
         for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -100,64 +98,68 @@ fn setup_generics_and_where_clause(
         // db connection should be able to run migrations
         D::Connection: sqlx::migrate::Migrate,
     };
-    quote! {
-        impl<D> #trait_name for #type_name<D> where #where_clause {
-            #(#items)*
-        }
-    }
-}
 
-fn convert_async_func(item: &ImplItem, with_body: bool) -> proc_macro2::TokenStream {
-    if let ImplItem::Fn(ImplItemFn {
-        ref sig, ref block, ..
-    }) = item
-    {
-        if sig.asyncness.is_some() {
-            let name = &sig.ident;
-            let generics = sig
-                .generics
-                .params
-                .iter()
-                .map(|i| i.to_token_stream())
-                .collect::<Vec<proc_macro2::TokenStream>>();
-            let inputs = sig
-                .inputs
-                .iter()
-                .map(|input| input.to_token_stream())
-                .collect::<Vec<proc_macro2::TokenStream>>();
-            let output = match &sig.output {
-                ReturnType::Default => quote! { () },
-                ReturnType::Type(_, ty) => ty.to_token_stream(),
-            };
-            let output = quote! {
-                std::pin::Pin<Box<dyn std::future::Future<Output = #output> + '_>>
-            };
-            let body = match with_body {
-                false => quote! {},
-                true => quote! {
-                    {
-                        Box::pin(async move {
-                            #block
-                        })
-                    }
-                },
-            };
-            println!("body: {body}");
-            return quote! {
-                fn #name<#(#generics,)*>(#(#inputs,)*) -> #output #body
-            };
+    if let Type::Path(ref mut type_path) = &mut *input.self_ty {
+        if let Some(segment) = type_path.path.segments.first_mut() {
+            segment.arguments = PathArguments::AngleBracketed(parse_quote! { <D> })
         }
     }
-    quote! { #item }
+    input
+        .generics
+        .params
+        .push(syn::GenericParam::Type(TypeParam {
+            ident: Ident::new("D", input.span()),
+            attrs: vec![],
+            colon_token: None,
+            bounds: Punctuated::new(),
+            eq_token: None,
+            default: None,
+        }));
+    input.generics.where_clause = Some(where_clause);
+    input.items.iter_mut().for_each(|item| {
+        let f = match item {
+            ImplItem::Fn(f) => {
+                f
+            },
+            _ => return
+        };
+        // remove async keyword and replace fn span with async span
+        f.sig.fn_token.span = match f.sig.asyncness.take() {
+            Some(token) => token.span(),
+            None => return
+        };
+
+        // update return type to Pin<Box<Future<Output=...>> + '_>>;
+        let output_span = f.sig.output.span();
+        let output_type: Type = match &f.sig.output {
+            ReturnType::Default => parse_quote_spanned!{
+                output_span => std::pin::Pin<Box<dyn std::future::Future<Output = ()> + '_>>
+            },
+            ReturnType::Type(_, ty) => {
+                let tokens = ty.to_token_stream();
+                parse_quote_spanned!{
+                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = #tokens> + '_>>
+                }
+            }
+        };
+        f.sig.output = ReturnType::Type(Token![->](output_span), Box::new(output_type));
+        // wrap function body into Box::pin(async move { #body })
+        let block_span = f.block.span();
+        let block = &f.block;
+        f.block = parse_quote_spanned!{
+            block_span => { Box::pin(async move #block ) }
+        };
+    });
 }
 
 #[proc_macro_attribute]
 pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs: proc_macro2::TokenStream = attrs.into();
-    let input: syn::Item = syn::parse(input).unwrap();
+    let mut input: syn::Item = syn::parse(input).unwrap();
 
     match input {
-        syn::Item::Impl(ref i) => {
+        syn::Item::Impl(ref mut i) => {
+            // macro will inject own generic bounds, where clause and type for DatabaseRepository
             if i.generics.lt_token.is_some() {
                 return quote_spanned! {
                     i.generics.params.span() => compile_error!("Repo implementation should not have any generics");
@@ -168,27 +170,36 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     i.generics.where_clause.span() => compile_error!("Repo implementation should not have where clause");
                 }.into()
             }
-            let mut func_sigs: Vec<proc_macro2::TokenStream> = vec![];
-            let trait_name = &i.trait_.as_ref().unwrap().1;
-            let database_constructor = get_database_constructor(trait_name);
-            let input = setup_generics_and_where_clause(i, trait_name);
-            for item in i.items.as_slice() {
-                if let ImplItem::Fn(_) = item {
-                    func_sigs.push(convert_async_func(item, false))
+            let trait_name = match i.trait_.as_ref() {
+                Some(trait_name) => trait_name.1.clone(),
+                None => {
+                    return quote_spanned! {
+                        input.span() => compile_error!("works only for 'impl Trait for DatabaseRepository'");
+                    }.into()
                 }
-            }
-            quote! {
+            };
+            // rewrite impl block
+            setup_generics_and_where_clause(i);
+            let database_constructor = get_database_constructor(&trait_name);
+            let trait_func_sigs = i.items.iter().filter_map(|func| {
+                if let ImplItem::Fn(f) = func {
+                    Some(&f.sig)
+                } else {
+                    None
+                }
+            }).collect::<Vec<&Signature>>();
+            let trait_impl = quote! {
                 pub trait #trait_name: #attrs {
-                    #(#func_sigs;)*
+                    #(#trait_func_sigs;)*
                 }
-
-                #input
-
                 #database_constructor
-            }
+            };
+            let mut output = input.to_token_stream();
+            output.extend(trait_impl);
+            output
         }
         _ => quote! {
-            compile_error!("works only for 'impl Trait for Something'");
+            compile_error!("works only for 'impl Trait for DatabaseRepository'");
         },
     }
     .into()
