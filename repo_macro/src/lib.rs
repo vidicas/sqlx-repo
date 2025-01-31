@@ -95,8 +95,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
         // Database transactions should be deref-able into database connection
         for<'e> sqlx::Transaction<'e, D>: std::ops::Deref<Target = <D as sqlx::Database>::Connection>,
         for<'e> sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
-
-        //<D as sqlx::Database>::Arguments<'_>: sqlx::IntoArguments<'_, D>>,
+        for<'e> <D as sqlx::Database>::Arguments<'e>: sqlx::IntoArguments<'e, D>,
 
         // db connection should be able to run migrations
         D::Connection: sqlx::migrate::Migrate,
@@ -132,16 +131,16 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
             None => return
         };
 
-        // update return type to Pin<Box<Future<Output=...>> + '_>>;
+        // update return type to Pin<Box<Future<Output=...>> + Send + '_>>;
         let output_span = f.sig.output.span();
         let output_type: Type = match &f.sig.output {
             ReturnType::Default => parse_quote_spanned!{
-                output_span => std::pin::Pin<Box<dyn std::future::Future<Output = ()> + '_>>
+                output_span => std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>>
             },
             ReturnType::Type(_, ty) => {
                 let tokens = ty.to_token_stream();
                 parse_quote_spanned!{
-                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = #tokens> + '_>>
+                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = #tokens> + Send + '_>>
                 }
             }
         };
