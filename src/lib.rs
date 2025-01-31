@@ -40,7 +40,9 @@ pub mod prelude {
         SqlxBinder as _
     };
     pub use serde_json;
-    pub use sqlx;
+    pub use sqlx::{
+        self, Row as _,
+    };
     pub use url;
     pub use uuid;
 }
