@@ -84,6 +84,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 
         // sea-query-binder
         for<'e> sea_query_binder::SqlxValues: sqlx::IntoArguments<'e, D>,
+        
 
         // sqlx bounds
         for<'c> &'c mut <D as sqlx::Database>::Connection: sqlx::Executor<'c, Database = D>,
@@ -94,6 +95,8 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
         // Database transactions should be deref-able into database connection
         for<'e> sqlx::Transaction<'e, D>: std::ops::Deref<Target = <D as sqlx::Database>::Connection>,
         for<'e> sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
+
+        //<D as sqlx::Database>::Arguments<'_>: sqlx::IntoArguments<'_, D>>,
 
         // db connection should be able to run migrations
         D::Connection: sqlx::migrate::Migrate,

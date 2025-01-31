@@ -35,7 +35,10 @@ pub mod prelude {
     pub use futures;
     pub use repo_macro::repo;
     pub use sea_query;
-    pub use sea_query_binder;
+    pub use sea_query_binder::{
+        self,
+        SqlxBinder as _
+    };
     pub use serde_json;
     pub use sqlx;
     pub use url;
