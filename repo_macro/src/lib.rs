@@ -63,8 +63,9 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
 /// - Preserver original spans
 fn setup_generics_and_where_clause(input: &mut ItemImpl) {
     let where_clause = parse_quote! {
-        where D: sqlx::Database,
+        where D: sqlx::Database + std::any::Any,
         // Types, that Database should support
+        for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i64: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -190,10 +191,12 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     None
                 }
             }).collect::<Vec<&Signature>>();
+
             let trait_impl = quote! {
                 pub trait #trait_name: #attrs {
                     #(#trait_func_sigs;)*
                 }
+
                 #database_constructor
             };
             let mut output = input.to_token_stream();
