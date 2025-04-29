@@ -9,4 +9,5 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
+sqlparser = "0.55.0"
 syn = { version = "2", features = ["full"] }

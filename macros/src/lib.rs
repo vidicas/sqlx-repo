@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{
-    parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, Ident, ImplItem,
-    ItemImpl, Path, PathArguments, ReturnType, Signature, Token, Type, TypeParam,
+    parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, 
+    Expr, Ident, ImplItem, ItemImpl, Lit, ExprLit, Path, 
+    PathArguments, ReturnType, Signature, Token, Type, TypeParam
 };
 
 fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
@@ -63,7 +64,7 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
 /// - Preserver original spans
 fn setup_generics_and_where_clause(input: &mut ItemImpl) {
     let where_clause = parse_quote! {
-        where D: sqlx::Database + std::any::Any,
+        where D: sqlx::Database + __private::SqlxDBNum,
         // Types, that Database should support
         for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -193,6 +194,48 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             }).collect::<Vec<&Signature>>();
 
             let trait_impl = quote! {
+                mod __private {
+                    pub trait SqlxDBNum {
+                        fn pos() -> usize {
+                            usize::MAX
+                        }
+                    }
+
+                    impl SqlxDBNum for sqlx::Postgres {
+                        fn pos() -> usize {
+                            0
+                        }
+                    }
+
+                    impl SqlxDBNum for sqlx::Sqlite {
+                        fn pos() -> usize {
+                            1
+                        }
+                    }
+
+                    impl SqlxDBNum for sqlx::MySql {
+                        fn pos() -> usize {
+                            2
+                        }
+                    }
+
+                    impl SqlxDBNum for () {
+                        fn pos() -> usize {
+                            panic!("query macro should be used only inside #[repo]")
+                        }
+                    }
+
+                    pub(crate) struct Query<D: SqlxDBNum = ()> {
+                        _marker: std::marker::PhantomData<D>,
+                    }
+
+                    impl<D: SqlxDBNum> Query<D> {
+                        pub fn query(options: &'static [&'static str]) -> &'static str {
+                            options[D::pos()]                            
+                        }
+                    }
+                }
+
                 pub trait #trait_name: #attrs {
                     #(#trait_func_sigs;)*
                 }
@@ -208,4 +251,33 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
         },
     }
     .into()
+}
+
+#[proc_macro]
+pub fn query(input: TokenStream) -> TokenStream {
+    let input: syn::Expr = syn::parse(input).expect("expected expression");
+    match input {
+        Expr::Lit(ExprLit{lit: Lit::Str(lit), ..})=> {
+            let query = lit.value();
+            let mut ast = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect{}, &query)
+                .expect("failed to parse query");
+            if ast.len() != 1 {
+                panic!("expected exactly one statement in the query");
+            }
+            let ast = ast.pop().unwrap();
+            println!("ast: {}", ast);
+        },
+        _ => panic!("expected literal"),
+    }
+    //let ast = sqlparser::parser::Parser::parse_sql()
+    quote!{ 
+        {
+            static QUERIES: [&'static str; 3] = [
+                "select postgres",
+                "select sqlite",
+                "select mysql",
+            ];
+            __private::Query::<D>::query(QUERIES.as_slice())
+        }
+    }.into()
 }

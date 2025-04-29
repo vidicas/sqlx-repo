@@ -35,8 +35,8 @@ fn hide_credentials(url: &str) -> Result<String> {
 impl<D: sqlx::Database> DatabaseRepository<D> {
     pub async fn new(
         url: &str,
-        query_builder: Box<dyn sea_query::QueryBuilder + Send + Sync>,
-        schema_builder: Box<dyn sea_query::SchemaBuilder + Send + Sync>,
+        query_builder: Box<dyn sea_query::QueryBuilder + Send + Sync + 'static>,
+        schema_builder: Box<dyn sea_query::SchemaBuilder + Send + Sync + 'static>,
     ) -> Result<Self> {
         Ok(Self {
             database_url: hide_credentials(url)?,
@@ -47,11 +47,12 @@ impl<D: sqlx::Database> DatabaseRepository<D> {
     }
 }
 
+
 pub mod prelude {
     pub use super::DatabaseRepository;
     pub use chrono;
     pub use futures;
-    pub use macros::repo;
+    pub use macros::{repo, query};
     pub use serde_json;
     pub use sqlx::{self, Row as _};
     pub use url;
