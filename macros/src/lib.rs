@@ -102,7 +102,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
         D::Connection: sqlx::migrate::Migrate,
     };
 
-    if let Type::Path(ref mut type_path) = &mut *input.self_ty {
+    if let Type::Path(type_path) = &mut *input.self_ty {
         if let Some(segment) = type_path.path.segments.first_mut() {
             segment.arguments = PathArguments::AngleBracketed(parse_quote! { <D> })
         }

@@ -51,7 +51,7 @@ pub mod prelude {
     pub use super::DatabaseRepository;
     pub use chrono;
     pub use futures;
-    pub use repo_macro::repo;
+    pub use macros::repo;
     pub use serde_json;
     pub use sqlx::{self, Row as _};
     pub use url;
