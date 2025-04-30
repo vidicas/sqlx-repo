@@ -31,9 +31,7 @@ fn hide_credentials(url: &str) -> Result<String> {
 }
 
 impl<D: sqlx::Database> DatabaseRepository<D> {
-    pub async fn new(
-        url: &str,
-    ) -> Result<Self> {
+    pub async fn new(url: &str) -> Result<Self> {
         Ok(Self {
             database_url: hide_credentials(url)?,
             pool: sqlx::Pool::<D>::connect(url).await?,
