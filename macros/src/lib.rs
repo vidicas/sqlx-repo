@@ -160,7 +160,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs: proc_macro2::TokenStream = attrs.into();
     let mut input: syn::Item = syn::parse(input).unwrap();
-
+    
     match input {
         syn::Item::Impl(ref mut i) => {
             // macro will inject own generic bounds, where clause and type for DatabaseRepository
@@ -192,47 +192,42 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     None
                 }
             }).collect::<Vec<&Signature>>();
-
-            let trait_impl = quote! {
-                mod __private {
-                    pub trait SqlxDBNum {
-                        fn pos() -> usize {
-                            usize::MAX
-                        }
+            
+            let private_module = quote!{
+                use macros::query;
+                use super::*;
+                
+                pub trait SqlxDBNum {
+                    fn pos() -> usize {
+                        usize::MAX
                     }
+                }
 
-                    impl SqlxDBNum for sqlx::Postgres {
-                        fn pos() -> usize {
-                            0
-                        }
+                impl SqlxDBNum for sqlx::Postgres {
+                    fn pos() -> usize {
+                        0
                     }
+                }
 
-                    impl SqlxDBNum for sqlx::Sqlite {
-                        fn pos() -> usize {
-                            1
-                        }
+                impl SqlxDBNum for sqlx::Sqlite {
+                    fn pos() -> usize {
+                        1
                     }
+                }
 
-                    impl SqlxDBNum for sqlx::MySql {
-                        fn pos() -> usize {
-                            2
-                        }
+                impl SqlxDBNum for sqlx::MySql {
+                    fn pos() -> usize {
+                        2
                     }
+                }
 
-                    impl SqlxDBNum for () {
-                        fn pos() -> usize {
-                            panic!("query macro should be used only inside #[repo]")
-                        }
-                    }
+                pub(crate) struct Query<D: SqlxDBNum> {
+                    _marker: std::marker::PhantomData<D>,
+                }
 
-                    pub(crate) struct Query<D: SqlxDBNum = ()> {
-                        _marker: std::marker::PhantomData<D>,
-                    }
-
-                    impl<D: SqlxDBNum> Query<D> {
-                        pub fn query(options: &'static [&'static str]) -> &'static str {
-                            options[D::pos()]                            
-                        }
+                impl<D: SqlxDBNum> Query<D> {
+                    pub fn query(options: &'static [&'static str]) -> &'static str {
+                        options[D::pos()]                            
                     }
                 }
 
@@ -242,9 +237,17 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                 #database_constructor
             };
-            let mut output = input.to_token_stream();
-            output.extend(trait_impl);
-            output
+
+            let db_repo_decl = input.to_token_stream();
+            quote_spanned! { 
+                input.span() => 
+                mod __private {
+                    #private_module
+
+                    #db_repo_decl
+                }
+                use __private::#trait_name; 
+            }
         }
         _ => quote! {
             compile_error!("works only for 'impl Trait for DatabaseRepository'");
@@ -267,9 +270,12 @@ pub fn query(input: TokenStream) -> TokenStream {
             let ast = ast.pop().unwrap();
             println!("ast: {}", ast);
         },
-        _ => panic!("expected literal"),
+        _ => {
+            return quote!{
+                compile_error!("expected string");
+            }.into()
+        }
     }
-    //let ast = sqlparser::parser::Parser::parse_sql()
     quote!{ 
         {
             static QUERIES: [&'static str; 3] = [
