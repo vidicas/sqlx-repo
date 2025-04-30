@@ -28,8 +28,6 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
                         Box::new(
                             DatabaseRepository::<sqlx::Sqlite>::new(
                                 database_url.as_ref(),
-                                Box::new(sea_query::SqliteQueryBuilder),
-                                Box::new(sea_query::SqliteQueryBuilder),
                             )
                             .await?,
                         )
@@ -37,16 +35,12 @@ fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
                     "postgres" => Box::new(
                         DatabaseRepository::<sqlx::Postgres>::new(
                             database_url.as_ref(),
-                            Box::new(sea_query::PostgresQueryBuilder),
-                            Box::new(sea_query::PostgresQueryBuilder),
                         )
                         .await?,
                     ),
                     "mysql" => Box::new(
                         DatabaseRepository::<sqlx::MySql>::new(
                             database_url.as_ref(),
-                            Box::new(sea_query::MysqlQueryBuilder),
-                            Box::new(sea_query::MysqlQueryBuilder),
                         )
                         .await?,
                     ),
@@ -83,10 +77,6 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 
         // col access through usize index
         usize: sqlx::ColumnIndex<D::Row>,
-
-        // sea-query-binder
-        for<'e> sea_query_binder::SqlxValues: sqlx::IntoArguments<'e, D>,
-        
 
         // sqlx bounds
         for<'c> &'c mut <D as sqlx::Database>::Connection: sqlx::Executor<'c, Database = D>,
@@ -239,6 +229,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             };
 
             let db_repo_decl = input.to_token_stream();
+
             quote_spanned! { 
                 input.span() => 
                 mod __private {

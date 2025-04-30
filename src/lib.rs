@@ -4,8 +4,6 @@ where
 {
     pub database_url: String,
     pub pool: sqlx::Pool<D>,
-    pub query_builder: Box<dyn sea_query::QueryBuilder + Send + Sync>,
-    pub schema_builder: Box<dyn sea_query::SchemaBuilder + Send + Sync>,
 }
 
 type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -35,14 +33,10 @@ fn hide_credentials(url: &str) -> Result<String> {
 impl<D: sqlx::Database> DatabaseRepository<D> {
     pub async fn new(
         url: &str,
-        query_builder: Box<dyn sea_query::QueryBuilder + Send + Sync + 'static>,
-        schema_builder: Box<dyn sea_query::SchemaBuilder + Send + Sync + 'static>,
     ) -> Result<Self> {
         Ok(Self {
             database_url: hide_credentials(url)?,
             pool: sqlx::Pool::<D>::connect(url).await?,
-            query_builder,
-            schema_builder,
         })
     }
 }

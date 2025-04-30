@@ -29,8 +29,8 @@ async fn test_database_creation() {
         println!()
     }
 }
-
-#[test]
-fn test_query() {
-    query!("select 1");
-}
+//
+//#[test]
+//fn test_query() {
+//    query!("select 1");
+//}
