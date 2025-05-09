@@ -8,7 +8,7 @@ chrono = "0.4"
 futures = "0.3"
 macros = { path = "./macros" }
 serde_json = "1"
-sqlx = { version = "0.8", features = ["chrono", "mysql", "postgres", "runtime-tokio", "runtime-tokio-rustls", "sqlite", "uuid"] }
+sqlx = { version = "0.8", features = ["chrono", "json", "mysql", "postgres", "runtime-tokio", "runtime-tokio-rustls", "sqlite", "uuid"] }
 url = "2"
 uuid = "1"
 
