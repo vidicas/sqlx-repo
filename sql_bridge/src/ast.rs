@@ -9,8 +9,8 @@ use std::{
 
 use sqlparser::{
     ast::{
-        CharacterLength, ColumnDef, ColumnOptionDef, CreateTable, ExactNumberInfo, ObjectName,
-        ObjectNamePart, Statement, TableConstraint,
+        CharacterLength, ColumnDef, ColumnOptionDef, CreateTable, ExactNumberInfo, Ident,
+        ObjectName, ObjectNamePart, Statement, Table, TableConstraint,
     },
     dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -86,7 +86,7 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Custom(ObjectName(name_parts), _) => {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
-                    None => Err("unsupported data type: {value:?}")?,
+                    None => Err(format!("unsupported data type: {value:?}"))?,
                 }
             }
             sqlparser::ast::DataType::Date => DataType::Date,
@@ -282,7 +282,69 @@ fn is_auto_increment_option(option: &sqlparser::ast::ColumnOption) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Constraint {}
+pub enum Constraint {
+    PrimaryKey(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Constraints(Vec<Constraint>);
+
+impl Constraints {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug)]
+pub struct ConstraintsIter<'a> {
+    constraints: &'a Constraints,
+    pos: usize,
+}
+
+impl<'a> Iterator for ConstraintsIter<'a> {
+    type Item = &'a Constraint;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.constraints.0.len() > self.pos {
+            let item = &self.constraints.0[self.pos];
+            self.pos += 1;
+            return Some(item);
+        }
+        None
+    }
+}
+
+impl<'a> IntoIterator for &'a Constraints {
+    type IntoIter = ConstraintsIter<'a>;
+    type Item = &'a Constraint;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ConstraintsIter {
+            pos: 0,
+            constraints: self,
+        }
+    }
+}
+
+impl TryFrom<&[TableConstraint]> for Constraints {
+    type Error = Error;
+
+    fn try_from(value: &[TableConstraint]) -> Result<Self, Self::Error> {
+        let constraints = value
+            .iter()
+            .map(|constraint| match constraint {
+                TableConstraint::PrimaryKey { columns, .. } => Ok(Constraint::PrimaryKey(
+                    columns
+                        .iter()
+                        .map(|Ident { value, .. }| value.clone())
+                        .collect(),
+                )),
+                _ => Err(format!("unsupported constraint: {constraint:?}")),
+            })
+            .collect::<Result<Vec<Constraint>, _>>()?;
+        Ok(Constraints(constraints))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ast {
@@ -290,7 +352,7 @@ pub enum Ast {
         if_not_exists: bool,
         name: String,
         columns: Vec<Column>,
-        constraints: Vec<Constraint>,
+        constraints: Constraints,
     },
 }
 
@@ -331,7 +393,7 @@ impl Ast {
             if_not_exists,
             name,
             columns,
-            constraints: vec![],
+            constraints: Constraints::try_from(constraints)?,
         })
     }
 
@@ -425,6 +487,28 @@ impl Ast {
 
                     // push comma if column is not last
                     if pos != columns.len() - 1 {
+                        buf.write_all(b",\n")?;
+                    }
+                }
+                if constraints.len() > 0 {
+                    buf.write_all(b",\n")?;
+                }
+                for (pos, constraint) in constraints.into_iter().enumerate() {
+                    match constraint {
+                        Constraint::PrimaryKey(fields) => {
+                            buf.write_all(b"PRIMARY KEY (")?;
+                            let fields = fields
+                                .iter()
+                                .map(|field| {
+                                    [dialect.quote(), field.as_bytes(), dialect.quote()].concat()
+                                })
+                                .collect::<Vec<Vec<u8>>>()
+                                .join(", ".as_bytes());
+                            buf.write_all(&fields)?;
+                            buf.write_all(b")")?;
+                        }
+                    }
+                    if pos != constraints.len() - 1 {
                         buf.write_all(b",\n")?;
                     }
                 }

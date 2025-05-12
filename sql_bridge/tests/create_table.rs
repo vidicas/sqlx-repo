@@ -206,6 +206,7 @@ fn test_all_supported_types() {
 #[test]
 fn test_mysql_style_primary_key() {
     let input = "CREATE TABLE test (id integer primary key autoincrement)";
+
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
@@ -223,5 +224,29 @@ fn test_mysql_style_primary_key() {
     assert_eq!(
         ast.to_sql(PostgreSqlDialect {}).unwrap(),
         "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)"
+    );
+}
+
+#[test]
+fn test_composite_primary_key() {
+    let input = "CREATE TABLE foo_baz(l int, r int, value text, primary key (l, p))";
+
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap(),
+        "CREATE TABLE `foo_baz` (\n`l` INT,\n`r` INT,\n`value` TEXT,\nPRIMARY KEY (`l`, `p`)\n)"
+    );
+
+    assert_eq!(
+        ast.to_sql(SQLiteDialect {}).unwrap(),
+        "CREATE TABLE `foo_baz` (\n`l` INTEGER,\n`r` INTEGER,\n`value` TEXT,\nPRIMARY KEY (`l`, `p`)\n)"
+    );
+
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        "CREATE TABLE \"foo_baz\" (\n\"l\" INT,\n\"r\" INT,\n\"value\" TEXT,\nPRIMARY KEY (\"l\", \"p\")\n)"
     );
 }
