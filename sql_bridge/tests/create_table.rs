@@ -2,132 +2,109 @@ use sql_bridge::{parse, MySqlDialect, SQLiteDialect, PostgreSqlDialect};
 
 #[test]
 fn test_serial_no_primary_key() {
-    let query = "CREATE TABLE test (id serial)";
+    let input = "CREATE TABLE test (id smallserial)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(MySqlDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(SQLiteDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(PostgreSqlDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
-}
 
-#[test]
-fn test_bigserial_no_primary_key() {
-    let query = "CREATE TABLE test (id bigserial)";
+    let input = "CREATE TABLE test (id serial)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(MySqlDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(SQLiteDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        "expected serial/bigserial with `PRIMARY KEY` constraint",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(PostgreSqlDialect {})
-            .unwrap_err()
-            .to_string()
+        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
+    );
+
+    let input = "CREATE TABLE test (id bigserial)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
+    );
+    assert_eq!(
+        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
+    );
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 }
 
 #[test]
 fn test_primary_key_creation() {
-    let query = "CREATE TABLE test (id serial primary key)";
+    let query = "CREATE TABLE test (id smallserial primary key)";
+    let mut ast = parse(query).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
     assert_eq!(
-        "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(MySqlDialect {})
-            .unwrap()
+        "CREATE TABLE `test` (\n`id` SMALLINT PRIMARY KEY AUTO_INCREMENT\n)",
+        ast.to_sql(MySqlDialect {}).unwrap()
     );
     assert_eq!(
-        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY AUTOINCREMENT\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(SQLiteDialect {})
-            .unwrap()
+        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
+        ast.to_sql(SQLiteDialect {}).unwrap()
+    );
+    assert_eq!(
+        "CREATE TABLE \"test\" (\n\"id\" SMALLSERIAL PRIMARY KEY\n)",
+        ast.to_sql(PostgreSqlDialect {}).unwrap()
+    );
+
+    let query = "CREATE TABLE test (id serial primary key)";
+    let mut ast = parse(query).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+    assert_eq!(
+        "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)",
+        ast.to_sql(MySqlDialect {}).unwrap()
+    );
+    assert_eq!(
+        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
+        ast.to_sql(SQLiteDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(PostgreSqlDialect {})
-            .unwrap()
+        ast.to_sql(PostgreSqlDialect {}).unwrap()
     );
 
     let query = "CREATE TABLE test (id bigserial primary key)";
+    let mut ast = parse(query).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` BIGINT PRIMARY KEY AUTO_INCREMENT\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(MySqlDialect {})
-            .unwrap()
+        ast.to_sql(MySqlDialect {}).unwrap()
     );
     assert_eq!(
-        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY AUTOINCREMENT\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(SQLiteDialect {})
-            .unwrap()
+        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
+        ast.to_sql(SQLiteDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE \"test\" (\n\"id\" BIGSERIAL PRIMARY KEY\n)",
-        parse(query)
-            .unwrap()
-            .first()
-            .unwrap()
-            .to_sql(PostgreSqlDialect {})
-            .unwrap()
+        ast.to_sql(PostgreSqlDialect {}).unwrap()
     );
 }
 
@@ -204,7 +181,7 @@ fn test_all_supported_types() {
     );
     assert_eq!(
         r#"CREATE TABLE `sample_types` (
-`id32` INTEGER PRIMARY KEY AUTOINCREMENT,
+`id32` INTEGER PRIMARY KEY,
 `i16` INTEGER,
 `i32` INTEGER,
 `i64` INTEGER,
@@ -223,5 +200,29 @@ fn test_all_supported_types() {
 `json` JSON
 )"#,
         ast.to_sql(SQLiteDialect {}).unwrap()
+    );
+}
+
+
+#[test]
+fn test_mysql_style_primary_key() {
+    let input = "CREATE TABLE test (id integer primary key autoincrement)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+    
+    assert_eq!(
+        ast.to_sql(MySqlDialect{}).unwrap(),
+        "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)"
+    );
+
+    assert_eq!(
+        ast.to_sql(SQLiteDialect{}).unwrap(),
+        "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)"
+    );
+
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect{}).unwrap(),
+        "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)"
     );
 }

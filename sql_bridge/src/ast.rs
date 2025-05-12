@@ -11,9 +11,7 @@ use sqlparser::{
     ast::{
         CharacterLength, ColumnDef, ColumnOptionDef, CreateTable, ExactNumberInfo, ObjectName,
         ObjectNamePart, Statement, TableConstraint,
-    },
-    dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
-    parser::Parser,
+    }, dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect}, keywords::Keyword, parser::Parser, tokenizer::{Token, Word}
 };
 
 use crate::{Result, Error};
@@ -21,6 +19,7 @@ use crate::{Result, Error};
 /// Common datatypes which are supported across all databases
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DataType {
+    SmallSerial,
     Serial,
     BigSerial,
     I16,
@@ -102,6 +101,7 @@ fn extract_serial(name_parts: &[ObjectNamePart]) -> Option<DataType> {
     match name.as_str() {
         "bigserial" => Some(DataType::BigSerial),
         "serial" => Some(DataType::Serial),
+        "smallserial" => Some(DataType::SmallSerial),
         _ => None,
     }
 }
@@ -240,20 +240,38 @@ impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
     type Error = Error;
 
     fn try_from(values: &[ColumnOptionDef]) -> Result<Self, Self::Error> {
-        let options = values.iter().try_fold(
+        values.iter().try_fold(
             ColumnOptions::new(),
             |mut options, value| -> Result<_, Error> {
-                match &value.option {
+                let options = match &value.option {
                     sqlparser::ast::ColumnOption::Unique { is_primary, .. } if *is_primary => {
-                        Ok(options.set_primary_key())
+                        options.set_primary_key()
                     }
-                    sqlparser::ast::ColumnOption::NotNull => Ok(options.set_not_null()),
-                    sqlparser::ast::ColumnOption::Null => Ok(options.set_nullable()),
-                    _ => Err(format!("unsupported column option: {value:?}"))?,
-                }
+                    sqlparser::ast::ColumnOption::NotNull => options.set_not_null(),
+                    sqlparser::ast::ColumnOption::Null => options.set_nullable(),
+                    option if is_auto_increment_option(option) => options.set_auto_increment(),
+                    option => Err(format!("unsupported column option: {option:?}"))?,
+                };
+                Ok(options)
             },
-        )?;
-        Ok(options)
+        )
+    }
+}
+
+fn is_auto_increment_option(option: &sqlparser::ast::ColumnOption) -> bool {
+    match option {
+        sqlparser::ast::ColumnOption::DialectSpecific(tokens) if tokens.len() == 1 => {
+            tokens.first().map(|token| {
+                match token {
+                    Token::Word(Word{ keyword, ..}) => {
+                        *keyword == Keyword::AUTOINCREMENT || 
+                        *keyword == Keyword::AUTO_INCREMENT
+                    },
+                    _ => false
+                } 
+            }).unwrap()
+        },
+        _ => false,
     }
 }
 
@@ -439,6 +457,10 @@ impl ToQuery for MySqlDialect {
     ) -> Result<()> {
         let mut options = *options;
         let spec = match data_type {
+            DataType::SmallSerial if options.is_primary_key() => {
+                options = options.set_auto_increment();
+                Cow::Borrowed("SMALLINT")
+            }
             DataType::Serial if options.is_primary_key() => {
                 options = options.set_auto_increment();
                 Cow::Borrowed("INT")
@@ -447,8 +469,8 @@ impl ToQuery for MySqlDialect {
                 options = options.set_auto_increment();
                 Cow::Borrowed("BIGINT")
             }
-            DataType::Serial | DataType::BigSerial => {
-                Err("expected serial/bigserial with `PRIMARY KEY` constraint")?
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
+                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
             }
             DataType::I16 => Cow::Borrowed("SMALLLINT"),
             DataType::I32 => Cow::Borrowed("INT"),
@@ -510,18 +532,20 @@ impl ToQuery for PostgreSqlDialect {
     ) -> Result<()> {
         let mut options = *options;
         let spec = match data_type {
-            DataType::Serial if options.is_primary_key() => {
-                // Postgres doesn't support auto increment syntax and uses serial instead
-                options = options.unset_auto_increment();
+            DataType::SmallSerial if options.is_primary_key() => Cow::Borrowed("SMALLSERIAL"),
+            DataType::Serial if options.is_primary_key() => Cow::Borrowed("SERIAL"),
+            DataType::BigSerial if options.is_primary_key() => Cow::Borrowed("BIGSERIAL"),
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
+                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
+            },
+            DataType::I16 if options.is_primary_key() && options.is_auto_increment() => {
+                Cow::Borrowed("SMALLSERIAL")
+            }
+            DataType::I32 if options.is_primary_key() && options.is_auto_increment() => {
                 Cow::Borrowed("SERIAL")
             }
-            DataType::BigSerial if options.is_primary_key() => {
-                // Postgres doesn't support auto increment syntax and uses serial instead
-                options = options.unset_auto_increment();
+            DataType::I64 if options.is_primary_key() && options.is_auto_increment() => {
                 Cow::Borrowed("BIGSERIAL")
-            }
-            DataType::Serial | DataType::BigSerial => {
-                Err("expected serial/bigserial with `PRIMARY KEY` constraint")?
             }
             DataType::I16 => Cow::Borrowed("SMALLLINT"),
             DataType::I32 => Cow::Borrowed("INT"),
@@ -545,12 +569,12 @@ impl ToQuery for PostgreSqlDialect {
         buf.write_all(spec.as_bytes())?;
         let options = options
             .into_iter()
-            .map(|option| match option {
-                ColumnOption::PrimaryKey => "PRIMARY KEY",
-                ColumnOption::AutoInrement => "AUTO INCREMENT",
-                ColumnOption::NotNull => "NOT NULL",
-                ColumnOption::Nullable => "NULL",
-                ColumnOption::Unique => "UNIQUE",
+            .filter_map(|option| match option {
+                ColumnOption::PrimaryKey => Some("PRIMARY KEY"),
+                ColumnOption::AutoInrement => None,
+                ColumnOption::NotNull => Some("NOT NULL"),
+                ColumnOption::Nullable => Some("NULL"),
+                ColumnOption::Unique => Some("UNIQUE"),
             })
             .collect::<Vec<_>>()
             .join(" ");
@@ -582,18 +606,20 @@ impl ToQuery for SQLiteDialect {
     ) -> Result<()> {
         let mut options = *options;
         let spec = match data_type {
-            DataType::Serial if options.is_primary_key() => {
-                // Postgres doesn't support auto increment syntax and uses serial instead
-                options = options.set_auto_increment();
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial if options.is_primary_key() => {
                 Cow::Borrowed("INTEGER")
             }
-            DataType::BigSerial if options.is_primary_key() => {
-                options = options.set_auto_increment();
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
+                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
+            }
+            DataType::I16 | DataType::I32 | DataType::I64 if options.is_primary_key() => {
+                // Sqlite doesn't need auto increment for integer primary key, since it's already auto incremented
+                // in nature
+                options = options.unset_auto_increment();
                 Cow::Borrowed("INTEGER")
             }
-            DataType::Serial | DataType::BigSerial => {
-                Err("expected serial/bigserial with `PRIMARY KEY` constraint")?
-            }
+            DataType::I32 => Cow::Borrowed("INTEGER"),
+            DataType::I64 => Cow::Borrowed("INTEGER"),
             DataType::I16 => Cow::Borrowed("INTEGER"),
             DataType::I32 => Cow::Borrowed("INTEGER"),
             DataType::I64 => Cow::Borrowed("INTEGER"),
