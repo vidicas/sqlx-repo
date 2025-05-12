@@ -11,10 +11,14 @@ use sqlparser::{
     ast::{
         CharacterLength, ColumnDef, ColumnOptionDef, CreateTable, ExactNumberInfo, ObjectName,
         ObjectNamePart, Statement, TableConstraint,
-    }, dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect}, keywords::Keyword, parser::Parser, tokenizer::{Token, Word}
+    },
+    dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+    keywords::Keyword,
+    parser::Parser,
+    tokenizer::{Token, Word},
 };
 
-use crate::{Result, Error};
+use crate::{Error, Result};
 
 /// Common datatypes which are supported across all databases
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -32,12 +36,9 @@ pub enum DataType {
     Char(u64),
     VarChar(u64),
     Bytes,
-    JSON,
-    UUID,
-    Decimal{
-        precision: u64,
-        scale: u64
-    },
+    Json,
+    Uuid,
+    Decimal { precision: u64, scale: u64 },
     Date,
     Time,
     Timestamp,
@@ -66,16 +67,22 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
                 ..
             })) => DataType::VarChar(*length),
             sqlparser::ast::DataType::Bytea => DataType::Bytes,
-            sqlparser::ast::DataType::JSON => DataType::JSON,
-            sqlparser::ast::DataType::Uuid => DataType::UUID,
+            sqlparser::ast::DataType::JSON => DataType::Json,
+            sqlparser::ast::DataType::Uuid => DataType::Uuid,
             sqlparser::ast::DataType::Decimal(ExactNumberInfo::PrecisionAndScale(
                 precision,
                 scale,
-            )) => DataType::Decimal{precision: *precision, scale: *scale},
+            )) => DataType::Decimal {
+                precision: *precision,
+                scale: *scale,
+            },
             sqlparser::ast::DataType::Numeric(ExactNumberInfo::PrecisionAndScale(
                 precision,
                 scale,
-            )) => DataType::Decimal{precision: *precision, scale: *scale},
+            )) => DataType::Decimal {
+                precision: *precision,
+                scale: *scale,
+            },
             sqlparser::ast::DataType::Custom(ObjectName(name_parts), _) => {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
@@ -181,6 +188,7 @@ impl ColumnOptions {
         self.0 & ColumnOption::Unique as u32 != 0
     }
 
+    #[allow(clippy::type_complexity)]
     fn mapping() -> &'static [(ColumnOption, fn(Self) -> bool)] {
         &[
             (ColumnOption::PrimaryKey, ColumnOptions::is_primary_key),
@@ -260,17 +268,15 @@ impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
 
 fn is_auto_increment_option(option: &sqlparser::ast::ColumnOption) -> bool {
     match option {
-        sqlparser::ast::ColumnOption::DialectSpecific(tokens) if tokens.len() == 1 => {
-            tokens.first().map(|token| {
-                match token {
-                    Token::Word(Word{ keyword, ..}) => {
-                        *keyword == Keyword::AUTOINCREMENT || 
-                        *keyword == Keyword::AUTO_INCREMENT
-                    },
-                    _ => false
-                } 
-            }).unwrap()
-        },
+        sqlparser::ast::ColumnOption::DialectSpecific(tokens) if tokens.len() == 1 => tokens
+            .first()
+            .map(|token| match token {
+                Token::Word(Word { keyword, .. }) => {
+                    *keyword == Keyword::AUTOINCREMENT || *keyword == Keyword::AUTO_INCREMENT
+                }
+                _ => false,
+            })
+            .unwrap(),
         _ => false,
     }
 }
@@ -482,9 +488,9 @@ impl ToQuery for MySqlDialect {
             DataType::Char(len) => Cow::Owned(format!("CHAR({len})")),
             DataType::VarChar(len) => Cow::Owned(format!("VARCHAR({len})")),
             DataType::Bytes => Cow::Borrowed("BLOB"),
-            DataType::JSON => Cow::Borrowed("JSON"),
-            DataType::UUID => Cow::Borrowed("CHAR(36)"),
-            DataType::Decimal{precision, scale} => {
+            DataType::Json => Cow::Borrowed("JSON"),
+            DataType::Uuid => Cow::Borrowed("CHAR(36)"),
+            DataType::Decimal { precision, scale } => {
                 Cow::Owned(format!("DECIMAL({precision}, {scale})"))
             }
             DataType::Date => Cow::Borrowed("DATE"),
@@ -537,7 +543,7 @@ impl ToQuery for PostgreSqlDialect {
             DataType::BigSerial if options.is_primary_key() => Cow::Borrowed("BIGSERIAL"),
             DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
                 Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
-            },
+            }
             DataType::I16 if options.is_primary_key() && options.is_auto_increment() => {
                 Cow::Borrowed("SMALLSERIAL")
             }
@@ -557,9 +563,9 @@ impl ToQuery for PostgreSqlDialect {
             DataType::Char(len) => Cow::Owned(format!("CHAR({len})")),
             DataType::VarChar(len) => Cow::Owned(format!("VARCHAR({len})")),
             DataType::Bytes => Cow::Borrowed("BYTEA"),
-            DataType::JSON => Cow::Borrowed("JSON"),
-            DataType::UUID => Cow::Borrowed("UUID"),
-            DataType::Decimal{precision, scale} => {
+            DataType::Json => Cow::Borrowed("JSON"),
+            DataType::Uuid => Cow::Borrowed("UUID"),
+            DataType::Decimal { precision, scale } => {
                 Cow::Owned(format!("DECIMAL({precision}, {scale})"))
             }
             DataType::Date => Cow::Borrowed("DATE"),
@@ -606,7 +612,9 @@ impl ToQuery for SQLiteDialect {
     ) -> Result<()> {
         let mut options = *options;
         let spec = match data_type {
-            DataType::SmallSerial | DataType::Serial | DataType::BigSerial if options.is_primary_key() => {
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial
+                if options.is_primary_key() =>
+            {
                 Cow::Borrowed("INTEGER")
             }
             DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
@@ -630,9 +638,9 @@ impl ToQuery for SQLiteDialect {
             DataType::Char(len) => Cow::Owned(format!("CHAR({len})")),
             DataType::VarChar(len) => Cow::Owned(format!("VARCHAR({len})")),
             DataType::Bytes => Cow::Borrowed("BLOB"),
-            DataType::JSON => Cow::Borrowed("JSON"),
-            DataType::UUID => Cow::Borrowed("UUID"),
-            DataType::Decimal{precision, scale} => {
+            DataType::Json => Cow::Borrowed("JSON"),
+            DataType::Uuid => Cow::Borrowed("UUID"),
+            DataType::Decimal { precision, scale } => {
                 Cow::Owned(format!("DECIMAL({precision}, {scale})"))
             }
             DataType::Date => Cow::Borrowed("TEXT"),

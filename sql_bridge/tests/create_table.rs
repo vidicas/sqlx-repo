@@ -1,4 +1,4 @@
-use sql_bridge::{parse, MySqlDialect, SQLiteDialect, PostgreSqlDialect};
+use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
 fn test_serial_no_primary_key() {
@@ -11,11 +11,11 @@ fn test_serial_no_primary_key() {
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 
@@ -28,11 +28,11 @@ fn test_serial_no_primary_key() {
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 
@@ -45,11 +45,11 @@ fn test_serial_no_primary_key() {
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect{}).unwrap_err().to_string(),
+        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect{}).unwrap_err().to_string(),
+        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 }
@@ -203,26 +203,25 @@ fn test_all_supported_types() {
     );
 }
 
-
 #[test]
 fn test_mysql_style_primary_key() {
     let input = "CREATE TABLE test (id integer primary key autoincrement)";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
-    
+
     assert_eq!(
-        ast.to_sql(MySqlDialect{}).unwrap(),
+        ast.to_sql(MySqlDialect {}).unwrap(),
         "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)"
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect{}).unwrap(),
+        ast.to_sql(SQLiteDialect {}).unwrap(),
         "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect{}).unwrap(),
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
         "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)"
     );
 }
