@@ -9,10 +9,11 @@ use std::{
 
 use sqlparser::{
     ast::{
-        CharacterLength, ColumnDef, ColumnOptionDef, CreateTable, ExactNumberInfo, Ident,
-        ObjectName, ObjectNamePart, Statement, Table, TableConstraint,
+        CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable, ExactNumberInfo,
+        Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Statement, Table,
+        TableConstraint,
     },
-    dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+    dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
     parser::Parser,
     tokenizer::{Token, Word},
@@ -354,23 +355,31 @@ pub enum Ast {
         columns: Vec<Column>,
         constraints: Constraints,
     },
+    CreateIndex {
+        unique: bool,
+        name: String,
+        table: String,
+        columns: Vec<String>,
+    },
 }
 
 impl Ast {
+    fn parse_object_name(name: &ObjectName) -> Result<String> {
+        let name_parts = &name.0;
+        if name_parts.len() > 1 {
+            Err("schema-qualified names are not supported")?
+        }
+        let ObjectNamePart::Identifier(ident) = name_parts.first().unwrap();
+        Ok(ident.value.clone())
+    }
+
     fn parse_create_table(
         if_not_exists: bool,
         name: &ObjectName,
         columns: &[ColumnDef],
         constraints: &[TableConstraint],
     ) -> Result<Ast> {
-        let name = {
-            let name_parts = &name.0;
-            if name_parts.len() > 1 {
-                Err("schema-qualified names are not supported")?
-            }
-            let ObjectNamePart::Identifier(ident) = name_parts.first().unwrap();
-            ident.value.clone()
-        };
+        let name = Self::parse_object_name(name)?;
         let columns = {
             columns
                 .iter()
@@ -397,6 +406,43 @@ impl Ast {
         })
     }
 
+    fn parse_create_index(
+        CreateIndex {
+            name,
+            table_name,
+            columns,
+            if_not_exists,
+            unique,
+            concurrently,
+            ..
+        }: &CreateIndex,
+    ) -> Result<Self> {
+        if *if_not_exists {
+            Err("index with existance check is not supported")?
+        };
+        if name.is_none() {
+            Err("index without name are not supported")?
+        }
+        if *concurrently {
+            Err("index with concurrent creation are not supported")?
+        }
+        let columns = columns
+            .iter()
+            .map(|IndexColumn { column, .. }| -> Result<String> {
+                match &column.expr {
+                    Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
+                    expr => Err("unsupported index column: {expr:?}")?,
+                }
+            })
+            .collect::<Result<Vec<String>>>()?;
+        Ok(Ast::CreateIndex {
+            unique: *unique,
+            name: Self::parse_object_name(name.as_ref().unwrap())?,
+            table: Self::parse_object_name(table_name)?,
+            columns,
+        })
+    }
+
     pub fn parse(query: &str) -> Result<Vec<Ast>> {
         Parser::parse_sql(&dialect::GenericDialect {}, query)?
             .iter()
@@ -419,9 +465,7 @@ impl Ast {
                     } => {
                         unimplemented!()
                     }
-                    Statement::CreateIndex(index) => {
-                        unimplemented!()
-                    }
+                    Statement::CreateIndex(index) => Self::parse_create_index(index)?,
                     Statement::AlterIndex { name, operation } => {
                         unimplemented!()
                     }
@@ -459,6 +503,93 @@ impl Ast {
             .collect::<Result<Vec<_>>>()
     }
 
+    fn create_table_to_sql(
+        dialect: impl ToQuery,
+        mut buf: impl Write,
+        if_not_exists: bool,
+        name: &str,
+        columns: &[Column],
+        constraints: &Constraints,
+    ) -> Result<()> {
+        buf.write_all(b"CREATE TABLE ")?;
+        if if_not_exists {
+            buf.write_all(b"IF NOT EXISTS ")?;
+        }
+
+        buf.write_all(dialect.quote())?;
+        buf.write_all(name.as_bytes())?;
+        buf.write_all(dialect.quote())?;
+        buf.write_all(b" (\n")?;
+        for (pos, column) in columns.iter().enumerate() {
+            buf.write_all(dialect.quote())?;
+            buf.write_all(column.name.as_bytes())?;
+            buf.write_all(dialect.quote())?;
+            buf.write_all(b" ")?;
+
+            dialect.emit_column_spec(column, &mut buf)?;
+
+            // push comma if column is not last
+            if pos != columns.len() - 1 {
+                buf.write_all(b",\n")?;
+            }
+        }
+        if constraints.len() > 0 {
+            buf.write_all(b",\n")?;
+        }
+        for (pos, constraint) in constraints.into_iter().enumerate() {
+            match constraint {
+                Constraint::PrimaryKey(fields) => {
+                    buf.write_all(b"PRIMARY KEY (")?;
+                    let fields = fields
+                        .iter()
+                        .map(|field| [dialect.quote(), field.as_bytes(), dialect.quote()].concat())
+                        .collect::<Vec<Vec<u8>>>()
+                        .join(", ".as_bytes());
+                    buf.write_all(&fields)?;
+                    buf.write_all(b")")?;
+                }
+            }
+            if pos != constraints.len() - 1 {
+                buf.write_all(b",\n")?;
+            }
+        }
+        buf.write_all(b"\n)")?;
+        Ok(())
+    }
+
+    fn create_index_to_sql(
+        dialect: impl ToQuery,
+        mut buf: impl Write,
+        unique: bool,
+        name: &str,
+        table: &str,
+        columns: &[String],
+    ) -> Result<()> {
+        if unique {
+            buf.write_all(b"CREATE UNIQUE INDEX ")?;
+        } else {
+            buf.write_all(b"CREATE INDEX ")?;
+        }
+        buf.write_all(dialect.quote())?;
+        buf.write_all(name.as_bytes())?;
+        buf.write_all(dialect.quote())?;
+        buf.write_all(b" ON ")?;
+        buf.write_all(dialect.quote())?;
+        buf.write_all(table.as_bytes())?;
+        buf.write_all(dialect.quote())?;
+        buf.write_all(b" (")?;
+        for (pos, column) in columns.iter().enumerate() {
+            buf.write_all(dialect.quote())?;
+            buf.write_all(column.as_bytes())?;
+            buf.write_all(dialect.quote())?;
+            if pos != columns.len() - 1 {
+                buf.write_all(b", ")?;
+            }
+        }
+        buf.write_all(b")")?;
+        Ok(())
+    }
+
     pub fn to_sql(&self, dialect: impl ToQuery) -> Result<String> {
         let mut buf = Cursor::new(Vec::with_capacity(1024));
         match self {
@@ -467,53 +598,20 @@ impl Ast {
                 name,
                 columns,
                 constraints,
-            } => {
-                buf.write_all(b"CREATE TABLE ")?;
-                if *if_not_exists {
-                    buf.write_all(b"IF NOT EXISTS ")?;
-                }
-
-                buf.write_all(dialect.quote())?;
-                buf.write_all(name.as_bytes())?;
-                buf.write_all(dialect.quote())?;
-                buf.write_all(b" (\n")?;
-                for (pos, column) in columns.iter().enumerate() {
-                    buf.write_all(dialect.quote())?;
-                    buf.write_all(column.name.as_bytes())?;
-                    buf.write_all(dialect.quote())?;
-                    buf.write_all(b" ")?;
-
-                    dialect.emit_column_spec(column, &mut buf)?;
-
-                    // push comma if column is not last
-                    if pos != columns.len() - 1 {
-                        buf.write_all(b",\n")?;
-                    }
-                }
-                if constraints.len() > 0 {
-                    buf.write_all(b",\n")?;
-                }
-                for (pos, constraint) in constraints.into_iter().enumerate() {
-                    match constraint {
-                        Constraint::PrimaryKey(fields) => {
-                            buf.write_all(b"PRIMARY KEY (")?;
-                            let fields = fields
-                                .iter()
-                                .map(|field| {
-                                    [dialect.quote(), field.as_bytes(), dialect.quote()].concat()
-                                })
-                                .collect::<Vec<Vec<u8>>>()
-                                .join(", ".as_bytes());
-                            buf.write_all(&fields)?;
-                            buf.write_all(b")")?;
-                        }
-                    }
-                    if pos != constraints.len() - 1 {
-                        buf.write_all(b",\n")?;
-                    }
-                }
-                buf.write_all(b"\n)")?;
-            }
+            } => Self::create_table_to_sql(
+                dialect,
+                &mut buf,
+                *if_not_exists,
+                name,
+                columns,
+                constraints,
+            )?,
+            Ast::CreateIndex {
+                unique,
+                name,
+                table,
+                columns,
+            } => Self::create_index_to_sql(dialect, &mut buf, *unique, name, table, columns)?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }

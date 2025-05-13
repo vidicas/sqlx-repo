@@ -229,7 +229,7 @@ fn test_mysql_style_primary_key() {
 
 #[test]
 fn test_composite_primary_key() {
-    let input = "CREATE TABLE foo_baz(l int, r int, value text, primary key (l, p))";
+    let input = "CREATE TABLE foo_baz(l int, r int, value text, primary key (l, r))";
 
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -237,16 +237,16 @@ fn test_composite_primary_key() {
 
     assert_eq!(
         ast.to_sql(MySqlDialect {}).unwrap(),
-        "CREATE TABLE `foo_baz` (\n`l` INT,\n`r` INT,\n`value` TEXT,\nPRIMARY KEY (`l`, `p`)\n)"
+        "CREATE TABLE `foo_baz` (\n`l` INT,\n`r` INT,\n`value` TEXT,\nPRIMARY KEY (`l`, `r`)\n)"
     );
 
     assert_eq!(
         ast.to_sql(SQLiteDialect {}).unwrap(),
-        "CREATE TABLE `foo_baz` (\n`l` INTEGER,\n`r` INTEGER,\n`value` TEXT,\nPRIMARY KEY (`l`, `p`)\n)"
+        "CREATE TABLE `foo_baz` (\n`l` INTEGER,\n`r` INTEGER,\n`value` TEXT,\nPRIMARY KEY (`l`, `r`)\n)"
     );
 
     assert_eq!(
         ast.to_sql(PostgreSqlDialect {}).unwrap(),
-        "CREATE TABLE \"foo_baz\" (\n\"l\" INT,\n\"r\" INT,\n\"value\" TEXT,\nPRIMARY KEY (\"l\", \"p\")\n)"
+        "CREATE TABLE \"foo_baz\" (\n\"l\" INT,\n\"r\" INT,\n\"value\" TEXT,\nPRIMARY KEY (\"l\", \"r\")\n)"
     );
 }
