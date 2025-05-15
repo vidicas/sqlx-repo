@@ -371,6 +371,7 @@ pub enum Ast {
 #[derive(Debug, Clone, PartialEq)]
 enum Projection {
     WildCard,
+    Identifier(String),
 }
 
 impl Ast {
@@ -453,36 +454,6 @@ impl Ast {
         })
     }
 
-    //  WITH (common table expressions, or CTEs)
-    //  pub with: Option<With>,
-    //
-    //  /// SELECT or UNION / EXCEPT / INTERSECT
-    //  pub body: Box<SetExpr>,
-    //
-    //  /// ORDER BY
-    //  pub order_by: Option<OrderBy>,
-    //
-    //  /// `LIMIT ... OFFSET ... | LIMIT <offset>, <limit>`
-    //  pub limit_clause: Option<LimitClause>,
-    //
-    //  /// `FETCH { FIRST | NEXT } <N> [ PERCENT ] { ROW | ROWS } | { ONLY | WITH TIES }`
-    //  pub fetch: Option<Fetch>,
-    //
-    //  /// `FOR { UPDATE | SHARE } [ OF table_name ] [ SKIP LOCKED | NOWAIT ]`
-    //  pub locks: Vec<LockClause>,
-    //  /// `FOR XML { RAW | AUTO | EXPLICIT | PATH } [ , ELEMENTS ]`
-    //  /// `FOR JSON { AUTO | PATH } [ , INCLUDE_NULL_VALUES ]`
-    //  /// (MSSQL-specific)
-    //  pub for_clause: Option<ForClause>,
-    //  /// ClickHouse syntax: `SELECT * FROM t SETTINGS key1 = value1, key2 = value2`
-    //  ///
-    //  /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select#settings-in-select-query)
-    //  pub settings: Option<Vec<Setting>>,
-    //  /// `SELECT * FROM t FORMAT JSONCompact`
-    //  ///
-    //  /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/format)
-    //  /// (ClickHouse-specific)
-    //  pub format_clause: Option<FormatClause>,
     fn parse_query(query: &Query) -> Result<Ast> {
         // FIXME:
         if query.with.is_some() {
@@ -514,6 +485,9 @@ impl Ast {
             .map(|projection| -> Result<_> {
                 match projection {
                     SelectItem::Wildcard(_) => Ok(Projection::WildCard),
+                    SelectItem::UnnamedExpr(Expr::Identifier(ident)) => {
+                        Ok(Projection::Identifier(ident.value.clone()))
+                    },
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
             })
@@ -537,7 +511,6 @@ impl Ast {
             projections,
             from,
         };
-        println!("{query:#?}");
         Ok(ast)
     }
 
@@ -614,15 +587,11 @@ impl Ast {
         if if_not_exists {
             buf.write_all(b"IF NOT EXISTS ")?;
         }
-
-        buf.write_all(dialect.quote())?;
-        buf.write_all(name.as_bytes())?;
-        buf.write_all(dialect.quote())?;
+&
+        Self::write_quoted(&dialect, &mut buf, name)?;
         buf.write_all(b" (\n")?;
         for (pos, column) in columns.iter().enumerate() {
-            buf.write_all(dialect.quote())?;
-            buf.write_all(column.name.as_bytes())?;
-            buf.write_all(dialect.quote())?;
+            Self::write_quoted(&dialect, &mut buf, &column.name)?;
             buf.write_all(b" ")?;
 
             dialect.emit_column_spec(column, &mut buf)?;
@@ -639,12 +608,12 @@ impl Ast {
             match constraint {
                 Constraint::PrimaryKey(fields) => {
                     buf.write_all(b"PRIMARY KEY (")?;
-                    let fields = fields
-                        .iter()
-                        .map(|field| [dialect.quote(), field.as_bytes(), dialect.quote()].concat())
-                        .collect::<Vec<Vec<u8>>>()
-                        .join(", ".as_bytes());
-                    buf.write_all(&fields)?;
+                    for (pos, field) in  fields.iter().enumerate() {
+                        Self::write_quoted(&dialect, &mut buf, field)?;
+                        if pos != fields.len() - 1 {
+                            buf.write_all(b", ")?;
+                        }
+                    }
                     buf.write_all(b")")?;
                 }
             }
@@ -669,18 +638,12 @@ impl Ast {
         } else {
             buf.write_all(b"CREATE INDEX ")?;
         }
-        buf.write_all(dialect.quote())?;
-        buf.write_all(name.as_bytes())?;
-        buf.write_all(dialect.quote())?;
+        Self::write_quoted(&dialect, &mut buf, name)?;
         buf.write_all(b" ON ")?;
-        buf.write_all(dialect.quote())?;
-        buf.write_all(table.as_bytes())?;
-        buf.write_all(dialect.quote())?;
+        Self::write_quoted(&dialect, &mut buf, table)?;
         buf.write_all(b" (")?;
         for (pos, column) in columns.iter().enumerate() {
-            buf.write_all(dialect.quote())?;
-            buf.write_all(column.as_bytes())?;
-            buf.write_all(dialect.quote())?;
+        Self::write_quoted(&dialect, &mut buf, column)?;
             if pos != columns.len() - 1 {
                 buf.write_all(b", ")?;
             }
@@ -703,15 +666,22 @@ impl Ast {
         for (pos, projection) in projections.iter().enumerate() {
             match projection {
                 Projection::WildCard => buf.write_all(b"*")?,
-                _ => (),
+                Projection::Identifier(ident) => {
+                    Self::write_quoted(&dialect, &mut buf, ident)?;
+                },
             };
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
             }
         }
         buf.write_all(b" FROM ")?;
+        Self::write_quoted(&dialect, buf, from)?;
+        Ok(())
+    }
+    
+    fn write_quoted(dialect: &impl ToQuery, mut buf: impl Write, input: impl AsRef<[u8]>) -> Result<()> {
         buf.write_all(dialect.quote())?;
-        buf.write_all(from.as_bytes())?;
+        buf.write_all(input.as_ref())?;
         buf.write_all(dialect.quote())?;
         Ok(())
     }

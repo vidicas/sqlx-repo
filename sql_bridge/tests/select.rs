@@ -17,3 +17,22 @@ fn test_simple_query() {
         "SELECT * FROM \"test\""
     );
 }
+
+#[test]
+fn test_query_with_projection() {
+    let input = "select id, key, * from test";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(ast.to_sql(MySqlDialect {}).unwrap(), "SELECT `id`, `key`, * FROM `test`");
+    assert_eq!(
+        ast.to_sql(SQLiteDialect {}).unwrap(),
+        "SELECT `id`, `key`, * FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        "SELECT \"id\", \"key\", * FROM \"test\""
+    );
+
+}
