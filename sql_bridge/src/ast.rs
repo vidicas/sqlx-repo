@@ -10,8 +10,8 @@ use std::{
 use sqlparser::{
     ast::{
         CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable, ExactNumberInfo,
-        Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Statement, Table,
-        TableConstraint,
+        Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query, SelectItem,
+        SetExpr, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -361,6 +361,16 @@ pub enum Ast {
         table: String,
         columns: Vec<String>,
     },
+    Select {
+        distinct: bool,
+        projections: Vec<Projection>,
+        from: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Projection {
+    WildCard,
 }
 
 impl Ast {
@@ -443,6 +453,94 @@ impl Ast {
         })
     }
 
+    //  WITH (common table expressions, or CTEs)
+    //  pub with: Option<With>,
+    //
+    //  /// SELECT or UNION / EXCEPT / INTERSECT
+    //  pub body: Box<SetExpr>,
+    //
+    //  /// ORDER BY
+    //  pub order_by: Option<OrderBy>,
+    //
+    //  /// `LIMIT ... OFFSET ... | LIMIT <offset>, <limit>`
+    //  pub limit_clause: Option<LimitClause>,
+    //
+    //  /// `FETCH { FIRST | NEXT } <N> [ PERCENT ] { ROW | ROWS } | { ONLY | WITH TIES }`
+    //  pub fetch: Option<Fetch>,
+    //
+    //  /// `FOR { UPDATE | SHARE } [ OF table_name ] [ SKIP LOCKED | NOWAIT ]`
+    //  pub locks: Vec<LockClause>,
+    //  /// `FOR XML { RAW | AUTO | EXPLICIT | PATH } [ , ELEMENTS ]`
+    //  /// `FOR JSON { AUTO | PATH } [ , INCLUDE_NULL_VALUES ]`
+    //  /// (MSSQL-specific)
+    //  pub for_clause: Option<ForClause>,
+    //  /// ClickHouse syntax: `SELECT * FROM t SETTINGS key1 = value1, key2 = value2`
+    //  ///
+    //  /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select#settings-in-select-query)
+    //  pub settings: Option<Vec<Setting>>,
+    //  /// `SELECT * FROM t FORMAT JSONCompact`
+    //  ///
+    //  /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/format)
+    //  /// (ClickHouse-specific)
+    //  pub format_clause: Option<FormatClause>,
+    fn parse_query(query: &Query) -> Result<Ast> {
+        // FIXME:
+        if query.with.is_some() {
+            Err("CTE is not yet supported")?
+        }
+        if query.fetch.is_some() {
+            Err("FETCH is not supported")?;
+        }
+        // FIXME:
+        if query.limit_clause.is_some() {
+            Err("LIMIT is not yet supported")?
+        }
+        if !query.locks.is_empty() {
+            Err("LOCKS are not supported")?
+        }
+        if query.for_clause.is_some() {
+            Err("FOR clause is not yet supported")?
+        }
+        let select = match &*query.body {
+            SetExpr::Select(select) => &**select,
+            other => Err(format!("only SELECT supported, got:\n{other:#?}"))?,
+        };
+        if select.top.is_some() || select.top_before_distinct {
+            return Err("TOP statement is not supported")?;
+        }
+        let projections = select
+            .projection
+            .iter()
+            .map(|projection| -> Result<_> {
+                match projection {
+                    SelectItem::Wildcard(_) => Ok(Projection::WildCard),
+                    _ => Err(format!("unsupported projection: {projection:?}"))?,
+                }
+            })
+            .collect::<Result<Vec<Projection>>>()?;
+
+        let from = match select.from.as_slice() {
+            &[
+                TableWithJoins {
+                    ref relation,
+                    ref joins,
+                    ..
+                },
+            ] if joins.is_empty() => match relation {
+                TableFactor::Table { name, .. } => Self::parse_object_name(&name)?,
+                other => Err(format!("unsupported table factor: {other:?}"))?,
+            },
+            other => Err("joins are not supported yet: {tables:?}")?,
+        };
+        let ast = Ast::Select {
+            distinct: select.distinct.is_some(),
+            projections,
+            from,
+        };
+        println!("{query:#?}");
+        Ok(ast)
+    }
+
     pub fn parse(query: &str) -> Result<Vec<Ast>> {
         Parser::parse_sql(&dialect::GenericDialect {}, query)?
             .iter()
@@ -466,6 +564,7 @@ impl Ast {
                         unimplemented!()
                     }
                     Statement::CreateIndex(index) => Self::parse_create_index(index)?,
+                    Statement::Query(query) => Self::parse_query(&*query)?,
                     Statement::AlterIndex { name, operation } => {
                         unimplemented!()
                     }
@@ -590,6 +689,33 @@ impl Ast {
         Ok(())
     }
 
+    fn select_to_sql(
+        dialect: impl ToQuery,
+        mut buf: impl Write,
+        distinct: bool,
+        projections: &[Projection],
+        from: &str,
+    ) -> Result<()> {
+        buf.write_all(b"SELECT ")?;
+        if distinct {
+            buf.write_all(b"DISTINCT ")?;
+        }
+        for (pos, projection) in projections.iter().enumerate() {
+            match projection {
+                Projection::WildCard => buf.write_all(b"*")?,
+                _ => (),
+            };
+            if pos != projections.len() - 1 {
+                buf.write_all(b", ")?;
+            }
+        }
+        buf.write_all(b" FROM ")?;
+        buf.write_all(dialect.quote())?;
+        buf.write_all(from.as_bytes())?;
+        buf.write_all(dialect.quote())?;
+        Ok(())
+    }
+
     pub fn to_sql(&self, dialect: impl ToQuery) -> Result<String> {
         let mut buf = Cursor::new(Vec::with_capacity(1024));
         match self {
@@ -612,6 +738,11 @@ impl Ast {
                 table,
                 columns,
             } => Self::create_index_to_sql(dialect, &mut buf, *unique, name, table, columns)?,
+            Ast::Select {
+                distinct,
+                projections,
+                from,
+            } => Self::select_to_sql(dialect, &mut buf, *distinct, projections, from)?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }

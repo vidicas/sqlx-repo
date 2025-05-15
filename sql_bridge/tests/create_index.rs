@@ -23,7 +23,6 @@ fn create_unique_index() {
     );
 }
 
-
 #[test]
 fn create_index() {
     let input = "CREATE INDEX idx ON table_name (id, org)";
