@@ -365,6 +365,7 @@ pub enum Ast {
         distinct: bool,
         projections: Vec<Projection>,
         from: String,
+        selection: Vec<Selection>,
     },
 }
 
@@ -372,6 +373,26 @@ pub enum Ast {
 enum Projection {
     WildCard,
     Identifier(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Selection {
+    BinaryOp{
+        op: Op,
+        left: Operand,
+        right: Operand,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Op {
+    Eq
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Operand {
+    Ident(String),
+    Number(String),
 }
 
 impl Ast {
@@ -510,7 +531,9 @@ impl Ast {
             distinct: select.distinct.is_some(),
             projections,
             from,
+            selection: vec![],
         };
+        println!("query: {query:#?}");
         Ok(ast)
     }
 
@@ -658,6 +681,7 @@ impl Ast {
         distinct: bool,
         projections: &[Projection],
         from: &str,
+        selection: &[Selection]
     ) -> Result<()> {
         buf.write_all(b"SELECT ")?;
         if distinct {
@@ -712,7 +736,8 @@ impl Ast {
                 distinct,
                 projections,
                 from,
-            } => Self::select_to_sql(dialect, &mut buf, *distinct, projections, from)?,
+                selection,
+            } => Self::select_to_sql(dialect, &mut buf, *distinct, projections, from, selection)?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }
