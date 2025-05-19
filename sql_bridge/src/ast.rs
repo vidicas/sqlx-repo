@@ -9,9 +9,9 @@ use std::{
 
 use sqlparser::{
     ast::{
-        CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable, ExactNumberInfo,
-        Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query, SelectItem,
-        SetExpr, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
+        BinaryOperator, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable,
+        ExactNumberInfo, Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query,
+        SelectItem, SetExpr, Statement, Table, TableConstraint, TableFactor, TableWithJoins, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -365,34 +365,72 @@ pub enum Ast {
         distinct: bool,
         projections: Vec<Projection>,
         from: String,
-        selection: Vec<Selection>,
+        selection: Option<Selection>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Projection {
+pub enum Projection {
     WildCard,
     Identifier(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Selection {
-    BinaryOp{
+pub enum Selection {
+    BinaryOp {
         op: Op,
-        left: Operand,
-        right: Operand,
+        left: Box<Selection>,
+        right: Box<Selection>,
     },
+    Ident(String),
+    Number(String),
+    String(String),
+}
+
+impl TryFrom<&Expr> for Selection {
+    type Error = Error;
+
+    fn try_from(expr: &Expr) -> std::result::Result<Self, Self::Error> {
+        let selection = match expr {
+            Expr::BinaryOp { left, op, right } => Selection::BinaryOp {
+                op: op.try_into()?,
+                left: {
+                    let left: Selection = left.as_ref().try_into()?;
+                    Box::new(left)
+                },
+                right: {
+                    let right: Selection = right.as_ref().try_into()?;
+                    Box::new(right)
+                },
+            },
+            Expr::Identifier(id) => Selection::Ident(id.value.clone()),
+            Expr::Value(value) => match &value.value {
+                Value::Number(number, _) => Selection::Number(number.clone()),
+                Value::SingleQuotedString(string) => Selection::String(string.clone()),
+                _ => Err(format!("unsupported value: {:#?}", value.value))?,
+            },
+            _ => unimplemented!("{expr:?}"),
+        };
+        Ok(selection)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Op {
-    Eq
+pub enum Op {
+    Eq,
+    And,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Operand {
-    Ident(String),
-    Number(String),
+impl TryFrom<&BinaryOperator> for Op {
+    type Error = Error;
+    fn try_from(op: &BinaryOperator) -> std::result::Result<Self, Self::Error> {
+        let op = match op {
+            BinaryOperator::And => Op::And,
+            BinaryOperator::Eq => Op::Eq,
+            _ => Err(format!("binary operator not supported {op:?}"))?,
+        };
+        Ok(op)
+    }
 }
 
 impl Ast {
@@ -508,7 +546,7 @@ impl Ast {
                     SelectItem::Wildcard(_) => Ok(Projection::WildCard),
                     SelectItem::UnnamedExpr(Expr::Identifier(ident)) => {
                         Ok(Projection::Identifier(ident.value.clone()))
-                    },
+                    }
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
             })
@@ -522,18 +560,26 @@ impl Ast {
                     ..
                 },
             ] if joins.is_empty() => match relation {
-                TableFactor::Table { name, .. } => Self::parse_object_name(&name)?,
+                TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
                 other => Err(format!("unsupported table factor: {other:?}"))?,
             },
             other => Err("joins are not supported yet: {tables:?}")?,
+        };
+        let selection = match select
+            .selection
+            .as_ref()
+            .map(|selection| selection.try_into())
+        {
+            None => None,
+            Some(Err(e)) => Err(e)?,
+            Some(Ok(selection)) => Some(selection),
         };
         let ast = Ast::Select {
             distinct: select.distinct.is_some(),
             projections,
             from,
-            selection: vec![],
+            selection,
         };
-        println!("query: {query:#?}");
         Ok(ast)
     }
 
@@ -560,7 +606,7 @@ impl Ast {
                         unimplemented!()
                     }
                     Statement::CreateIndex(index) => Self::parse_create_index(index)?,
-                    Statement::Query(query) => Self::parse_query(&*query)?,
+                    Statement::Query(query) => Self::parse_query(query)?,
                     Statement::AlterIndex { name, operation } => {
                         unimplemented!()
                     }
@@ -610,7 +656,6 @@ impl Ast {
         if if_not_exists {
             buf.write_all(b"IF NOT EXISTS ")?;
         }
-&
         Self::write_quoted(&dialect, &mut buf, name)?;
         buf.write_all(b" (\n")?;
         for (pos, column) in columns.iter().enumerate() {
@@ -631,7 +676,7 @@ impl Ast {
             match constraint {
                 Constraint::PrimaryKey(fields) => {
                     buf.write_all(b"PRIMARY KEY (")?;
-                    for (pos, field) in  fields.iter().enumerate() {
+                    for (pos, field) in fields.iter().enumerate() {
                         Self::write_quoted(&dialect, &mut buf, field)?;
                         if pos != fields.len() - 1 {
                             buf.write_all(b", ")?;
@@ -666,7 +711,7 @@ impl Ast {
         Self::write_quoted(&dialect, &mut buf, table)?;
         buf.write_all(b" (")?;
         for (pos, column) in columns.iter().enumerate() {
-        Self::write_quoted(&dialect, &mut buf, column)?;
+            Self::write_quoted(&dialect, &mut buf, column)?;
             if pos != columns.len() - 1 {
                 buf.write_all(b", ")?;
             }
@@ -681,7 +726,7 @@ impl Ast {
         distinct: bool,
         projections: &[Projection],
         from: &str,
-        selection: &[Selection]
+        selection: Option<&Selection>,
     ) -> Result<()> {
         buf.write_all(b"SELECT ")?;
         if distinct {
@@ -692,18 +737,52 @@ impl Ast {
                 Projection::WildCard => buf.write_all(b"*")?,
                 Projection::Identifier(ident) => {
                     Self::write_quoted(&dialect, &mut buf, ident)?;
-                },
+                }
             };
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
             }
         }
         buf.write_all(b" FROM ")?;
-        Self::write_quoted(&dialect, buf, from)?;
+        Self::write_quoted(&dialect, &mut buf, from)?;
+        if selection.is_none() {
+            return Ok(());
+        };
+        buf.write_all(b" WHERE ")?;
+        Self::selection_to_sql(&dialect, &mut buf, selection.unwrap())?;
         Ok(())
     }
-    
-    fn write_quoted(dialect: &impl ToQuery, mut buf: impl Write, input: impl AsRef<[u8]>) -> Result<()> {
+
+    fn selection_to_sql(
+        dialect: &impl ToQuery,
+        buf: &mut impl Write,
+        selection: &Selection,
+    ) -> Result<()> {
+        match selection {
+            Selection::BinaryOp { op, left, right } => {
+                Self::selection_to_sql(dialect, buf, left)?;
+                match op {
+                    Op::And => buf.write_all(b" AND ")?,
+                    Op::Eq => buf.write_all(b" = ")?,
+                }
+                Self::selection_to_sql(dialect, buf, right)?;
+            }
+            Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
+            Selection::Number(number) => buf.write_all(number.as_bytes())?,
+            Selection::String(string) => {
+                for chunk in [b"'", string.as_bytes(), b"'"] {
+                    buf.write_all(chunk)?;
+                }
+            }
+        };
+        Ok(())
+    }
+
+    fn write_quoted(
+        dialect: &impl ToQuery,
+        mut buf: impl Write,
+        input: impl AsRef<[u8]>,
+    ) -> Result<()> {
         buf.write_all(dialect.quote())?;
         buf.write_all(input.as_ref())?;
         buf.write_all(dialect.quote())?;
@@ -737,7 +816,14 @@ impl Ast {
                 projections,
                 from,
                 selection,
-            } => Self::select_to_sql(dialect, &mut buf, *distinct, projections, from, selection)?,
+            } => Self::select_to_sql(
+                dialect,
+                &mut buf,
+                *distinct,
+                projections,
+                from,
+                selection.as_ref(),
+            )?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }
