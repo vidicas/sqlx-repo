@@ -99,23 +99,23 @@ fn test_count_function() {
     );
 }
 
-//#[test]
-//fn test_query_with_group_by() {
-//    let input = "select * from test group by key";
-//    let mut ast = parse(input).unwrap();
-//    assert!(ast.len() == 1);
-//    let ast = ast.pop().unwrap();
-//
-//    assert_eq!(
-//        ast.to_sql(MySqlDialect {}).unwrap(),
-//        "SELECT * FROM `test` WHERE `id` = 1 AND `key` = 'foo'"
-//    );
-//    assert_eq!(
-//        ast.to_sql(SQLiteDialect {}).unwrap(),
-//        "SELECT * FROM `test` WHERE `id` = 1 AND `key` = 'foo'"
-//    );
-//    assert_eq!(
-//        ast.to_sql(PostgreSqlDialect {}).unwrap(),
-//        "SELECT * FROM \"test\" WHERE \"id\" = 1 AND \"key\" = 'foo'"
-//    );
-//}
+#[test]
+fn test_query_with_group_by() {
+    let input = "select key, count(*) from test group by key";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap(),
+        "SELECT `key`, COUNT(*) FROM `test` GROUP BY (`key`)"
+    );
+    assert_eq!(
+        ast.to_sql(SQLiteDialect {}).unwrap(),
+        "SELECT `key`, COUNT(*) FROM `test` GROUP BY (`key`)"
+    );
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        "SELECT \"key\", COUNT(*) FROM \"test\" GROUP BY (\"key\")"
+    );
+}

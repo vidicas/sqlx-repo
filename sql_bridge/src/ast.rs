@@ -367,6 +367,7 @@ pub enum Ast {
         projections: Vec<Projection>,
         from: String,
         selection: Option<Selection>,
+        group_by: Vec<GroupByParameter>,
     },
 }
 
@@ -398,6 +399,11 @@ pub enum Selection {
     Ident(String),
     Number(String),
     String(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GroupByParameter {
+    Ident(String),
 }
 
 impl TryFrom<&Expr> for Selection {
@@ -489,34 +495,17 @@ impl Ast {
         })
     }
 
-    //pub enum FunctionArg {
-    //    /// `name` is identifier
-    //    ///
-    //    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'false'
-    //    Named {
-    //        name: Ident,
-    //        arg: FunctionArgExpr,
-    //        operator: FunctionArgOperator,
-    //    },
-    //    /// `name` is arbitrary expression
-    //    ///
-    //    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'true'
-    //    ExprNamed {
-    //        name: Expr,
-    //        arg: FunctionArgExpr,
-    //        operator: FunctionArgOperator,
-    //    },
-    //    Unnamed(FunctionArgExpr),
-    //}
     fn parse_function_args(args: &FunctionArguments) -> Result<Vec<FunctionArg>> {
         let args = match args {
             FunctionArguments::None => vec![],
             FunctionArguments::List(list) => {
                 if !list.clauses.is_empty() {
-                    Err("function clauses are not yet supported: {list:?}")?
+                    Err(format!("function clauses are not yet supported: {list:?}"))?
                 };
                 if list.duplicate_treatment.is_some() {
-                    Err("function duplicate treatment not supported: {list:?}")?
+                    Err(format!(
+                        "function duplicate treatment not supported: {list:?}"
+                    ))?
                 }
                 list.args
                     .iter()
@@ -659,11 +648,22 @@ impl Ast {
             Some(Err(e)) => Err(e)?,
             Some(Ok(selection)) => Some(selection),
         };
+        let group_by = match &select.group_by {
+            sqlparser::ast::GroupByExpr::Expressions(expr, modifier) if modifier.is_empty() => expr
+                .iter()
+                .map(|expr| match expr {
+                    Expr::Identifier(ident) => Ok(GroupByParameter::Ident(ident.value.clone())),
+                    _ => Err(format!("unsupported expression in group by: {expr:?}"))?,
+                })
+                .collect::<Result<Vec<GroupByParameter>>>()?,
+            expr => Err(format!("unsupported group by expression: {expr:?}"))?,
+        };
         let ast = Ast::Select {
             distinct: select.distinct.is_some(),
             projections,
             from,
             selection,
+            group_by,
         };
         Ok(ast)
     }
@@ -812,6 +812,7 @@ impl Ast {
         projections: &[Projection],
         from: &str,
         selection: Option<&Selection>,
+        group_by: &[GroupByParameter],
     ) -> Result<()> {
         buf.write_all(b"SELECT ")?;
         if distinct {
@@ -838,11 +839,25 @@ impl Ast {
         }
         buf.write_all(b" FROM ")?;
         Self::write_quoted(&dialect, &mut buf, from)?;
-        if selection.is_none() {
-            return Ok(());
+        if let Some(selection) = selection.as_ref() {
+            buf.write_all(b" WHERE ")?;
+            Self::selection_to_sql(&dialect, &mut buf, selection)?;
         };
-        buf.write_all(b" WHERE ")?;
-        Self::selection_to_sql(&dialect, &mut buf, selection.unwrap())?;
+
+        if !group_by.is_empty() {
+            buf.write_all(b" GROUP BY (")?;
+            for (pos, parameter) in group_by.iter().enumerate() {
+                match parameter {
+                    GroupByParameter::Ident(ident) => {
+                        Self::write_quoted(&dialect, &mut buf, ident)?
+                    }
+                }
+                if pos != group_by.len() - 1 {
+                    buf.write_all(b", ")?;
+                }
+            }
+            buf.write_all(b")")?;
+        }
         Ok(())
     }
 
@@ -909,6 +924,7 @@ impl Ast {
                 projections,
                 from,
                 selection,
+                group_by,
             } => Self::select_to_sql(
                 dialect,
                 &mut buf,
@@ -916,6 +932,7 @@ impl Ast {
                 projections,
                 from,
                 selection.as_ref(),
+                group_by,
             )?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
