@@ -10,8 +10,9 @@ use std::{
 use sqlparser::{
     ast::{
         BinaryOperator, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable,
-        ExactNumberInfo, Expr, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query,
-        SelectItem, SetExpr, Statement, Table, TableConstraint, TableFactor, TableWithJoins, Value,
+        ExactNumberInfo, Expr, FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart,
+        OrderByExpr, Query, SelectItem, SetExpr, Statement, Table, TableConstraint, TableFactor,
+        TableWithJoins, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -373,6 +374,18 @@ pub enum Ast {
 pub enum Projection {
     WildCard,
     Identifier(String),
+    Function(Function),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Function {
+    Count(FunctionArg),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FunctionArg {
+    Wildcard,
+    Ident(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -476,6 +489,64 @@ impl Ast {
         })
     }
 
+    //pub enum FunctionArg {
+    //    /// `name` is identifier
+    //    ///
+    //    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'false'
+    //    Named {
+    //        name: Ident,
+    //        arg: FunctionArgExpr,
+    //        operator: FunctionArgOperator,
+    //    },
+    //    /// `name` is arbitrary expression
+    //    ///
+    //    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'true'
+    //    ExprNamed {
+    //        name: Expr,
+    //        arg: FunctionArgExpr,
+    //        operator: FunctionArgOperator,
+    //    },
+    //    Unnamed(FunctionArgExpr),
+    //}
+    fn parse_function_args(args: &FunctionArguments) -> Result<Vec<FunctionArg>> {
+        let args = match args {
+            FunctionArguments::None => vec![],
+            FunctionArguments::List(list) => {
+                if !list.clauses.is_empty() {
+                    Err("function clauses are not yet supported: {list:?}")?
+                };
+                if list.duplicate_treatment.is_some() {
+                    Err("function duplicate treatment not supported: {list:?}")?
+                }
+                list.args
+                    .iter()
+                    .map(|arg| -> Result<_> {
+                        let arg = match arg {
+                            sqlparser::ast::FunctionArg::ExprNamed { .. } => {
+                                Err("named expressions are not supported in function arguments")?
+                            }
+                            sqlparser::ast::FunctionArg::Named { .. } => {
+                                Err("named columns are not supported in function arguments(yet)")?
+                            }
+                            sqlparser::ast::FunctionArg::Unnamed(expr) => match expr {
+                                sqlparser::ast::FunctionArgExpr::Wildcard => FunctionArg::Wildcard,
+                                sqlparser::ast::FunctionArgExpr::Expr(Expr::Identifier(ident)) => {
+                                    FunctionArg::Ident(ident.value.clone())
+                                }
+                                _ => Err(format!("unsupported function argument: {expr:?}"))?,
+                            },
+                        };
+                        Ok(arg)
+                    })
+                    .collect::<Result<_>>()?
+            }
+            FunctionArguments::Subquery(query) => Err(format!(
+                "function arguments are not yet supported: {query:?}"
+            ))?,
+        };
+        Ok(args)
+    }
+
     fn parse_create_index(
         CreateIndex {
             name,
@@ -546,6 +617,20 @@ impl Ast {
                     SelectItem::Wildcard(_) => Ok(Projection::WildCard),
                     SelectItem::UnnamedExpr(Expr::Identifier(ident)) => {
                         Ok(Projection::Identifier(ident.value.clone()))
+                    }
+                    SelectItem::UnnamedExpr(Expr::Function(function)) => {
+                        let function_name = Self::parse_object_name(&function.name)?.to_lowercase();
+                        match function_name.as_str() {
+                            "count" => {
+                                let mut args = Self::parse_function_args(&function.args)?;
+                                if args.len() != 1 {
+                                    Err("COUNT function can only have single argument: {args:?}")?
+                                }
+                                let arg = args.pop().unwrap();
+                                Ok(Projection::Function(Function::Count(arg)))
+                            }
+                            name => Err(format!("unsupported function '{name}'"))?,
+                        }
                     }
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
@@ -738,6 +823,14 @@ impl Ast {
                 Projection::Identifier(ident) => {
                     Self::write_quoted(&dialect, &mut buf, ident)?;
                 }
+                Projection::Function(function) => match function {
+                    Function::Count(FunctionArg::Wildcard) => buf.write_all(b"COUNT(*)")?,
+                    Function::Count(FunctionArg::Ident(ident)) => {
+                        buf.write_all(b"COUNT(")?;
+                        Self::write_quoted(&dialect, &mut buf, ident)?;
+                        buf.write_all(b")")?
+                    }
+                },
             };
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
