@@ -370,6 +370,11 @@ pub enum Ast {
         group_by: Vec<GroupByParameter>,
         order_by: Vec<OrderByParameter>,
     },
+    Insert {
+        table: String,
+        columns: Vec<String>,
+        source: Vec<InsertSource>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -419,6 +424,9 @@ pub enum OrderOption {
     Desc,
     None,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InsertSource {}
 
 impl TryFrom<&Expr> for Selection {
     type Error = Error;
@@ -719,6 +727,81 @@ impl Ast {
         Ok(ast)
     }
 
+    fn parse_insert(insert: &sqlparser::ast::Insert) -> Result<Ast> {
+        println!("insert: {:#?}", insert);
+        let sqlparser::ast::Insert {
+            or,
+            ignore,
+            into,
+            table,
+            table_alias,
+            columns,
+            overwrite,
+            source,
+            assignments,
+            partitioned,
+            after_columns,
+            has_table_keyword,
+            on,
+            returning,
+            replace_into,
+            priority,
+            insert_alias,
+            settings,
+            format_clause,
+        } = insert;
+        // FIXME:
+        if or.is_some() {
+            Err("insert or not yet supported")?
+        };
+        // FIXME:
+        if *ignore {
+            Err("insert ignore is not yet supported")?
+        }
+        if !*into {
+            Err("insert without into is not supported")?
+        }
+        if table_alias.is_some() {
+            Err("table alias in insert it not supported")?
+        }
+        if *overwrite {
+            Err("overwrite in insert it not supported")?
+        }
+        if !assignments.is_empty() {
+            Err("insert assignments are not supported")?
+        }
+        if partitioned.is_some() || !after_columns.is_empty() {
+            Err("partitioned inserts are not supported")?
+        }
+        if *has_table_keyword {
+            Err("insert doesn't support TABLE keyword")?
+        }
+        // FIXME:
+        if on.is_some() {
+            Err("insert with ON is not supported")?
+        }
+        if returning.is_some() {
+            Err("insert RETURNING is not supported")?
+        }
+        if *replace_into {
+            Err("insert with replace into is not supported")?
+        }
+        if priority.is_some() {
+            Err("insert with priority is not supported")?
+        }
+        if insert_alias.is_some() {
+            Err("insert with insert alias is not supported")?
+        }
+        if settings.is_some() {
+            Err("insert with settints is not supported")?
+        }
+        if format_clause.is_some() {
+            Err("insert with format clause is not supported")?
+        }
+
+        unimplemented!()
+    }
+
     pub fn parse(query: &str) -> Result<Vec<Ast>> {
         Parser::parse_sql(&dialect::GenericDialect {}, query)?
             .iter()
@@ -757,9 +840,7 @@ impl Ast {
                     } => {
                         unimplemented!()
                     }
-                    Statement::Insert(insert) => {
-                        unimplemented!()
-                    }
+                    Statement::Insert(insert) => Self::parse_insert(insert)?,
                     Statement::Update {
                         table,
                         assignments,
@@ -1003,6 +1084,9 @@ impl Ast {
                 group_by,
                 order_by,
             )?,
+            Ast::Insert { table, columns, source } => {
+                unimplemented!()
+            }
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }
