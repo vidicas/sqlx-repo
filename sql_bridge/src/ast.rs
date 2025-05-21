@@ -368,6 +368,7 @@ pub enum Ast {
         from: String,
         selection: Option<Selection>,
         group_by: Vec<GroupByParameter>,
+        order_by: Vec<OrderByParameter>,
     },
 }
 
@@ -404,6 +405,19 @@ pub enum Selection {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GroupByParameter {
     Ident(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderByParameter {
+    ident: String,
+    option: OrderOption,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OrderOption {
+    Asc,
+    Desc,
+    None,
 }
 
 impl TryFrom<&Expr> for Selection {
@@ -658,12 +672,49 @@ impl Ast {
                 .collect::<Result<Vec<GroupByParameter>>>()?,
             expr => Err(format!("unsupported group by expression: {expr:?}"))?,
         };
+        let order_by = match query.order_by.as_ref() {
+            Some(order_by) => {
+                if order_by.interpolate.is_some() {
+                    Err("order by interpolate is not supported")?;
+                };
+                match &order_by.kind {
+                    sqlparser::ast::OrderByKind::All(_) => Err("order by all is not supported")?,
+                    sqlparser::ast::OrderByKind::Expressions(expressions) => expressions
+                        .iter()
+                        .map(|expression| {
+                            if expression.with_fill.is_some() {
+                                Err("with fill is not supported")?
+                            }
+                            let ident = match &expression.expr {
+                                Expr::Identifier(ident) => ident.value.clone(),
+                                expr => Err(format!("unsupported order by expression: {expr:?}"))?,
+                            };
+                            let option = match &expression.options {
+                                sqlparser::ast::OrderByOptions { nulls_first, .. }
+                                    if nulls_first.is_some() =>
+                                {
+                                    Err("order by with nulls first not supported".to_string())?
+                                }
+                                sqlparser::ast::OrderByOptions { asc, .. } => match asc {
+                                    None => OrderOption::None,
+                                    Some(true) => OrderOption::Asc,
+                                    Some(false) => OrderOption::Desc,
+                                },
+                            };
+                            Ok(OrderByParameter { ident, option })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                }
+            }
+            None => vec![],
+        };
         let ast = Ast::Select {
             distinct: select.distinct.is_some(),
             projections,
             from,
             selection,
             group_by,
+            order_by,
         };
         Ok(ast)
     }
@@ -805,6 +856,7 @@ impl Ast {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn select_to_sql(
         dialect: impl ToQuery,
         mut buf: impl Write,
@@ -813,6 +865,7 @@ impl Ast {
         from: &str,
         selection: Option<&Selection>,
         group_by: &[GroupByParameter],
+        order_by: &[OrderByParameter],
     ) -> Result<()> {
         buf.write_all(b"SELECT ")?;
         if distinct {
@@ -857,6 +910,20 @@ impl Ast {
                 }
             }
             buf.write_all(b")")?;
+        }
+        if !order_by.is_empty() {
+            buf.write_all(b" ORDER BY ")?;
+            for (pos, order_option) in order_by.iter().enumerate() {
+                Self::write_quoted(&dialect, &mut buf, order_option.ident.as_str())?;
+                match &order_option.option {
+                    OrderOption::Asc => buf.write_all(b" ASC")?,
+                    OrderOption::Desc => buf.write_all(b" DESC")?,
+                    OrderOption::None => (),
+                };
+                if pos != order_by.len() - 1 {
+                    buf.write_all(b", ")?;
+                }
+            }
         }
         Ok(())
     }
@@ -925,6 +992,7 @@ impl Ast {
                 from,
                 selection,
                 group_by,
+                order_by,
             } => Self::select_to_sql(
                 dialect,
                 &mut buf,
@@ -933,6 +1001,7 @@ impl Ast {
                 from,
                 selection.as_ref(),
                 group_by,
+                order_by,
             )?,
         };
         Ok(String::from_utf8(buf.into_inner())?)

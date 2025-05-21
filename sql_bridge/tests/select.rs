@@ -119,3 +119,24 @@ fn test_query_with_group_by() {
         "SELECT \"key\", COUNT(*) FROM \"test\" GROUP BY (\"key\")"
     );
 }
+
+#[test]
+fn test_query_with_order_by() {
+    let input = "select * from test order by id asc, key desc";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
+    );
+    assert_eq!(
+        ast.to_sql(SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
+    );
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" ORDER BY \"id\" ASC, \"key\" DESC"
+    );
+}
