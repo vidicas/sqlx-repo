@@ -426,7 +426,12 @@ pub enum OrderOption {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum InsertSource {}
+pub enum InsertSource {
+    String(String),
+    Number(String),
+    Null,
+    PlaceHolder,
+}
 
 impl TryFrom<&Expr> for Selection {
     type Error = Error;
@@ -728,7 +733,6 @@ impl Ast {
     }
 
     fn parse_insert(insert: &sqlparser::ast::Insert) -> Result<Ast> {
-        println!("insert: {:#?}", insert);
         let sqlparser::ast::Insert {
             or,
             ignore,
@@ -793,12 +797,29 @@ impl Ast {
             Err("insert with insert alias is not supported")?
         }
         if settings.is_some() {
-            Err("insert with settints is not supported")?
+            Err("insert with settings is not supported")?
         }
         if format_clause.is_some() {
             Err("insert with format clause is not supported")?
         }
-
+        let name = match &table {
+            sqlparser::ast::TableObject::TableName(name) => Self::parse_object_name(name)?,
+            _ => Err("unsupported table name type: {table:?}")?
+        };
+        let source = match source {
+            Some(source) => source,
+            None => Err("insert source is empty")?
+        };
+        println!("source: {:#?}", source);
+        let source = Self::parse_values(source)?;
+        Ok(Ast::Insert { 
+            table: name,
+            columns: columns.iter().map(|ident| ident.value.clone()).collect(),
+            source: vec![]
+        })
+    }
+    
+    fn parse_values(values: &Query) -> Result<Vec<()>> {
         unimplemented!()
     }
 

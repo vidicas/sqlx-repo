@@ -140,24 +140,3 @@ fn test_query_with_order_by() {
         "SELECT * FROM \"test\" ORDER BY \"id\" ASC, \"key\" DESC"
     );
 }
-
-#[test]
-fn test_basic_insert() {
-    let input = "insert into test(id, key, value) values(null, 1, 'one'), (null, 2, 'two')";
-    let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
-    let ast = ast.pop().unwrap();
-
-    assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
-        "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
-    );
-    assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
-        "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
-    );
-    assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
-        "SELECT * FROM \"test\" ORDER BY \"id\" ASC, \"key\" DESC"
-    );
-}
