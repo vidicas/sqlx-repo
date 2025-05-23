@@ -42,6 +42,7 @@ fn test_basic_insert_with_placeholders() {
     );
 }
 
+#[test]
 fn test_basic_insert_with_placeholders_with_cast() {
     let input = "insert into test(id, key, value) values(?::json, ?::uuid, ?)";
     let mut ast = parse(input).unwrap();
@@ -50,14 +51,14 @@ fn test_basic_insert_with_placeholders_with_cast() {
 
     assert_eq!(
         ast.to_sql(MySqlDialect {}).unwrap(),
-        "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?), (?, ?, ?)"
+        "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?)"
     );
     assert_eq!(
         ast.to_sql(SQLiteDialect {}).unwrap(),
-        "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?), (?, ?, ?)"
+        "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?)"
     );
     assert_eq!(
         ast.to_sql(PostgreSqlDialect {}).unwrap(),
-        "INSERT INTO \"test\"(\"id\", \"key\", \"value\") VALUES ($1, $2, $3), ($4, $5, $6)"
+        "INSERT INTO \"test\"(\"id\", \"key\", \"value\") VALUES ($1::JSON, $2::UUID, $3)"
     );
 }

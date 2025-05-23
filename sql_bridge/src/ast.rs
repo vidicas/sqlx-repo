@@ -9,10 +9,10 @@ use std::{
 
 use sqlparser::{
     ast::{
-        BinaryOperator, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable,
-        ExactNumberInfo, Expr, FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart,
-        OrderByExpr, Query, SelectItem, SetExpr, Statement, Table, TableConstraint, TableFactor,
-        TableWithJoins, Value,
+        BinaryOperator, CastKind, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex,
+        CreateTable, ExactNumberInfo, Expr, FunctionArguments, Ident, IndexColumn, ObjectName,
+        ObjectNamePart, OrderByExpr, Query, SelectItem, SetExpr, Statement, Table, TableConstraint,
+        TableFactor, TableWithJoins, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -431,6 +431,43 @@ pub enum InsertSource {
     Number(String),
     Null,
     PlaceHolder,
+    Cast {
+        cast: String,
+        source: Box<InsertSource>,
+    },
+}
+
+impl TryFrom<&Expr> for InsertSource {
+    type Error = Error;
+
+    fn try_from(value: &Expr) -> Result<Self, Self::Error> {
+        let value = match value {
+            Expr::Value(value) => &value.value,
+            Expr::Cast {
+                kind,
+                expr,
+                data_type,
+                format,
+            } if *kind == CastKind::DoubleColon && format.is_none() => match expr.as_ref() {
+                Expr::Value(_) => {
+                    return Ok(InsertSource::Cast {
+                        cast: data_type.to_string(),
+                        source: Box::new(expr.as_ref().try_into()?),
+                    });
+                }
+                _ => Err(format!("unsupported source cast expr: {expr:#?}"))?,
+            },
+            value => Err(format!("unsupported insert source value: {value:#?}"))?,
+        };
+        let insert_source = match value {
+            Value::Null => InsertSource::Null,
+            Value::Number(number, _) => InsertSource::Number(number.clone()),
+            Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
+            Value::Placeholder(_) => InsertSource::PlaceHolder,
+            value => Err(format!("unsupported insert source value: {value:#?}"))?,
+        };
+        Ok(insert_source)
+    }
 }
 
 impl TryFrom<&Expr> for Selection {
@@ -824,26 +861,7 @@ impl Ast {
                 .iter()
                 .map(|row| -> Result<Vec<InsertSource>> {
                     row.iter()
-                        .map(|value| -> Result<InsertSource> {
-                            let value = match value {
-                                Expr::Value(value) => &value.value,
-                                value => {
-                                    Err(format!("unsupported insert source value: {value:#?}"))?
-                                }
-                            };
-                            let value = match value {
-                                Value::Null => InsertSource::Null,
-                                Value::Number(number, _) => InsertSource::Number(number.clone()),
-                                Value::SingleQuotedString(string) => {
-                                    InsertSource::String(string.clone())
-                                }
-                                Value::Placeholder(_) => InsertSource::PlaceHolder,
-                                value => {
-                                    Err(format!("unsupported insert source value: {value:#?}"))?
-                                }
-                            };
-                            Ok(value)
-                        })
+                        .map(|value| value.try_into())
                         .collect::<Result<_>>()
                 })
                 .collect::<Result<_>>()?,
@@ -1059,6 +1077,34 @@ impl Ast {
         Ok(())
     }
 
+    fn insert_source_to_sql(
+        dialect: &impl ToQuery,
+        buf: &mut impl Write,
+        insert_source: &InsertSource,
+        place_holder_num: usize,
+    ) -> Result<()> {
+        match insert_source {
+            InsertSource::Null => buf.write_all(b"NULL")?,
+            InsertSource::Number(num) => buf.write_all(num.as_bytes())?,
+            InsertSource::String(string) => {
+                buf.write_all(b"'")?;
+                buf.write_all(string.as_bytes())?;
+                buf.write_all(b"'")?;
+            }
+            InsertSource::PlaceHolder => {
+                buf.write_all(dialect.placeholder(place_holder_num).as_bytes())?;
+            }
+            InsertSource::Cast { cast, source } => {
+                Self::insert_source_to_sql(dialect, &mut *buf, source, place_holder_num)?;
+                if dialect.placeholder_supports_cast() {
+                    buf.write_all(b"::")?;
+                    buf.write_all(cast.as_bytes())?;
+                }
+            }
+        };
+        Ok(())
+    }
+
     fn insert_to_sql(
         dialect: impl ToQuery,
         buf: &mut impl Write,
@@ -1084,26 +1130,16 @@ impl Ast {
                 buf.write_all(b", ")?;
             }
             buf.write_all(b"(")?;
-            for (col_pos, value) in row.iter().enumerate() {
+            for (col_pos, insert_source) in row.iter().enumerate() {
                 if col_pos != 0 {
                     buf.write_all(b", ")?;
                 }
-                match value {
-                    InsertSource::Null => buf.write_all(b"NULL")?,
-                    InsertSource::Number(num) => buf.write_all(num.as_bytes())?,
-                    InsertSource::String(string) => {
-                        buf.write_all(b"'")?;
-                        buf.write_all(string.as_bytes())?;
-                        buf.write_all(b"'")?;
-                    }
-                    InsertSource::PlaceHolder => {
-                        buf.write_all(
-                            dialect
-                                .placeholder(row_pos * row.len() + col_pos + 1)
-                                .as_bytes(),
-                        )?;
-                    }
-                }
+                Self::insert_source_to_sql(
+                    &dialect,
+                    &mut *buf,
+                    insert_source,
+                    row_pos * row.len() + col_pos + 1,
+                )?;
             }
             buf.write_all(b")")?;
         }
@@ -1207,6 +1243,10 @@ pub trait ToQuery {
 
     fn placeholder(&self, pos: usize) -> Cow<'static, str>;
 
+    fn placeholder_supports_cast(&self) -> bool {
+        false
+    }
+
     fn emit_column_spec(&self, column: &Column, buf: &mut dyn Write) -> Result<()>;
 }
 
@@ -1292,6 +1332,10 @@ impl ToQuery for PostgreSqlDialect {
 
     fn placeholder(&self, pos: usize) -> Cow<'static, str> {
         Cow::Owned(format!("${pos}"))
+    }
+
+    fn placeholder_supports_cast(&self) -> bool {
+        true
     }
 
     fn emit_column_spec(
