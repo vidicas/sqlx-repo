@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use std::{
+    any::Any,
     borrow::Cow,
     io::{Cursor, Write},
     ops::Deref,
@@ -9,10 +10,11 @@ use std::{
 
 use sqlparser::{
     ast::{
-        BinaryOperator, CastKind, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex,
-        CreateTable, ExactNumberInfo, Expr, FunctionArguments, Ident, IndexColumn, ObjectName,
-        ObjectNamePart, OrderByExpr, Query, SelectItem, SetExpr, Statement, Table, TableConstraint,
-        TableFactor, TableWithJoins, Value,
+        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
+        ColumnOptionDef, CreateIndex, CreateTable, ExactNumberInfo, Expr, FunctionArguments, Ident,
+        IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query, SelectItem, SetExpr,
+        SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
+        UpdateTableFromKind, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -375,6 +377,11 @@ pub enum Ast {
         columns: Vec<String>,
         source: Vec<Vec<InsertSource>>,
     },
+    Update {
+        table: String,
+        assignments: Vec<UpdateAssignment>,
+        selection: Option<Selection>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -405,6 +412,34 @@ pub enum Selection {
     Ident(String),
     Number(String),
     String(String),
+}
+
+impl TryFrom<&Expr> for Selection {
+    type Error = Error;
+
+    fn try_from(expr: &Expr) -> std::result::Result<Self, Self::Error> {
+        let selection = match expr {
+            Expr::BinaryOp { left, op, right } => Selection::BinaryOp {
+                op: op.try_into()?,
+                left: {
+                    let left: Selection = left.as_ref().try_into()?;
+                    Box::new(left)
+                },
+                right: {
+                    let right: Selection = right.as_ref().try_into()?;
+                    Box::new(right)
+                },
+            },
+            Expr::Identifier(id) => Selection::Ident(id.value.clone()),
+            Expr::Value(value) => match &value.value {
+                Value::Number(number, _) => Selection::Number(number.clone()),
+                Value::SingleQuotedString(string) => Selection::String(string.clone()),
+                _ => Err(format!("unsupported value: {:#?}", value.value))?,
+            },
+            _ => unimplemented!("{expr:?}"),
+        };
+        Ok(selection)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -470,31 +505,40 @@ impl TryFrom<&Expr> for InsertSource {
     }
 }
 
-impl TryFrom<&Expr> for Selection {
+#[derive(Debug, Clone, PartialEq)]
+pub struct UpdateAssignment {
+    target: String,
+    value: UpdateValue,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateValue {
+    String(String),
+    Number(String),
+    Null,
+    PlaceHolder,
+}
+
+impl TryFrom<&Expr> for UpdateValue {
     type Error = Error;
 
-    fn try_from(expr: &Expr) -> std::result::Result<Self, Self::Error> {
-        let selection = match expr {
-            Expr::BinaryOp { left, op, right } => Selection::BinaryOp {
-                op: op.try_into()?,
-                left: {
-                    let left: Selection = left.as_ref().try_into()?;
-                    Box::new(left)
-                },
-                right: {
-                    let right: Selection = right.as_ref().try_into()?;
-                    Box::new(right)
-                },
-            },
-            Expr::Identifier(id) => Selection::Ident(id.value.clone()),
-            Expr::Value(value) => match &value.value {
-                Value::Number(number, _) => Selection::Number(number.clone()),
-                Value::SingleQuotedString(string) => Selection::String(string.clone()),
-                _ => Err(format!("unsupported value: {:#?}", value.value))?,
-            },
-            _ => unimplemented!("{expr:?}"),
+    fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
+        let value = match expr {
+            Expr::Value(value) => &value.value,
+            expr => Err(format!(
+                "unsupported expr to convert into UpdateValue: {expr:?}"
+            ))?,
         };
-        Ok(selection)
+        let update_value = match value {
+            Value::Null => UpdateValue::Null,
+            Value::Number(number, _) => UpdateValue::Number(number.clone()),
+            Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
+            Value::Placeholder(_) => UpdateValue::PlaceHolder,
+            value => Err(format!(
+                "unsupported value for conversion into UpdateValue: {value:#?}"
+            ))?,
+        };
+        Ok(update_value)
     }
 }
 
@@ -870,6 +914,50 @@ impl Ast {
         Ok(values)
     }
 
+    fn parse_update(
+        table: &TableWithJoins,
+        assignments: &[Assignment],
+        from: Option<&UpdateTableFromKind>,
+        selection: Option<&Expr>,
+        returning: Option<&[SelectItem]>,
+        or: Option<&SqliteOnConflict>,
+    ) -> Result<Ast> {
+        if from.is_some() {
+            Err("update from table from kind is not supported")?
+        }
+        if returning.is_some() {
+            Err("update with returning is not supported")?
+        }
+        if or.is_some() {
+            Err("update with OR is not supported")?
+        }
+        let table = match &table.relation {
+            TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
+            _ => Err(format!("unsupported table type: {table:#?}"))?,
+        };
+        let assignments = assignments
+            .iter()
+            .map(|assigment| {
+                let target = match &assigment.target {
+                    AssignmentTarget::ColumnName(name) => Self::parse_object_name(name)?,
+                    target => Err(format!("unsupported assignment target: {target:?}"))?,
+                };
+                let value = (&assigment.value).try_into()?;
+                Ok(UpdateAssignment { target, value })
+            })
+            .collect::<Result<Vec<UpdateAssignment>>>()?;
+        let selection: Option<Selection> = match selection.map(|selection| selection.try_into()) {
+            None => None,
+            Some(Err(e)) => Err(e)?,
+            Some(Ok(selection)) => Some(selection),
+        };
+        Ok(Ast::Update {
+            table,
+            assignments,
+            selection,
+        })
+    }
+
     pub fn parse(query: &str) -> Result<Vec<Ast>> {
         Parser::parse_sql(&dialect::GenericDialect {}, query)?
             .iter()
@@ -916,9 +1004,14 @@ impl Ast {
                         selection,
                         returning,
                         or,
-                    } => {
-                        unimplemented!()
-                    }
+                    } => Self::parse_update(
+                        table,
+                        assignments.as_slice(),
+                        from.as_ref(),
+                        selection.as_ref(),
+                        returning.as_deref(),
+                        or.as_ref(),
+                    )?,
                     Statement::Delete(delete) => {
                         unimplemented!()
                     }
@@ -1086,11 +1179,7 @@ impl Ast {
         match insert_source {
             InsertSource::Null => buf.write_all(b"NULL")?,
             InsertSource::Number(num) => buf.write_all(num.as_bytes())?,
-            InsertSource::String(string) => {
-                buf.write_all(b"'")?;
-                buf.write_all(string.as_bytes())?;
-                buf.write_all(b"'")?;
-            }
+            InsertSource::String(string) => Self::write_single_quoted(dialect, &mut *buf, string)?,
             InsertSource::PlaceHolder => {
                 buf.write_all(dialect.placeholder(place_holder_num).as_bytes())?;
             }
@@ -1143,7 +1232,6 @@ impl Ast {
             }
             buf.write_all(b")")?;
         }
-
         Ok(())
     }
 
@@ -1172,6 +1260,40 @@ impl Ast {
         Ok(())
     }
 
+    fn update_to_sql(
+        dialect: &impl ToQuery,
+        buf: &mut impl Write,
+        table: &str,
+        assignments: &[UpdateAssignment],
+        selection: Option<&Selection>,
+    ) -> Result<()> {
+        buf.write_all(b"UPDATE ")?;
+        Self::write_quoted(dialect, &mut *buf, table)?;
+        buf.write_all(b" SET ")?;
+        for (pos, assignment) in assignments.iter().enumerate() {
+            if pos != 0 {
+                buf.write_all(b", ")?;
+            }
+            Self::write_quoted(dialect, &mut *buf, assignment.target.as_bytes())?;
+            buf.write(b"=")?;
+            match &assignment.value {
+                UpdateValue::Null => buf.write_all(b"NULL")?,
+                UpdateValue::String(string) => {
+                    Self::write_single_quoted(dialect, &mut *buf, string)?
+                }
+                UpdateValue::Number(number) => buf.write_all(number.as_bytes())?,
+                UpdateValue::PlaceHolder => {
+                    buf.write_all(dialect.placeholder(pos + 1).as_bytes())?
+                }
+            }
+        }
+        if let Some(selection) = selection.as_ref() {
+            buf.write_all(b" WHERE ")?;
+            Self::selection_to_sql(dialect, &mut *buf, selection)?;
+        };
+        Ok(())
+    }
+
     fn write_quoted(
         dialect: &impl ToQuery,
         mut buf: impl Write,
@@ -1180,6 +1302,17 @@ impl Ast {
         buf.write_all(dialect.quote())?;
         buf.write_all(input.as_ref())?;
         buf.write_all(dialect.quote())?;
+        Ok(())
+    }
+
+    fn write_single_quoted(
+        dialect: &impl ToQuery,
+        mut buf: impl Write,
+        input: impl AsRef<[u8]>,
+    ) -> Result<()> {
+        buf.write_all(b"'")?;
+        buf.write_all(input.as_ref())?;
+        buf.write_all(b"'")?;
         Ok(())
     }
 
@@ -1232,6 +1365,17 @@ impl Ast {
                 table.as_str(),
                 columns.as_slice(),
                 source.as_slice(),
+            )?,
+            Ast::Update {
+                table,
+                assignments,
+                selection,
+            } => Self::update_to_sql(
+                &dialect,
+                &mut buf,
+                table.as_str(),
+                assignments.as_slice(),
+                selection.as_ref(),
             )?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
