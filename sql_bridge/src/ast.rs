@@ -434,9 +434,14 @@ impl TryFrom<&Expr> for Selection {
             Expr::Value(value) => match &value.value {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
-                _ => Err(format!("unsupported value: {:#?}", value.value))?,
+                _ => Err(format!(
+                    "unsupported conversion to Selection from value: {:#?}",
+                    value.value
+                ))?,
             },
-            _ => unimplemented!("{expr:?}"),
+            expr => Err(format!(
+                "unsupported conversion to Selection from expr: {expr:?}"
+            ))?,
         };
         Ok(selection)
     }
@@ -490,16 +495,22 @@ impl TryFrom<&Expr> for InsertSource {
                         source: Box::new(expr.as_ref().try_into()?),
                     });
                 }
-                _ => Err(format!("unsupported source cast expr: {expr:#?}"))?,
+                _ => Err(format!(
+                    "unsupported conversion to insert source cast from expr: {expr:#?}"
+                ))?,
             },
-            value => Err(format!("unsupported insert source value: {value:#?}"))?,
+            value => Err(format!(
+                "unsupported conversion to insert source from value: {value:#?}"
+            ))?,
         };
         let insert_source = match value {
             Value::Null => InsertSource::Null,
             Value::Number(number, _) => InsertSource::Number(number.clone()),
             Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
             Value::Placeholder(_) => InsertSource::PlaceHolder,
-            value => Err(format!("unsupported insert source value: {value:#?}"))?,
+            value => Err(format!(
+                "unsupported conversion to insert source from value: {value:#?}"
+            ))?,
         };
         Ok(insert_source)
     }
@@ -526,7 +537,7 @@ impl TryFrom<&Expr> for UpdateValue {
         let value = match expr {
             Expr::Value(value) => &value.value,
             expr => Err(format!(
-                "unsupported expr to convert into UpdateValue: {expr:?}"
+                "unsupported conversion to UpdateValue from expr: {expr:?}"
             ))?,
         };
         let update_value = match value {
@@ -535,7 +546,7 @@ impl TryFrom<&Expr> for UpdateValue {
             Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
             Value::Placeholder(_) => UpdateValue::PlaceHolder,
             value => Err(format!(
-                "unsupported value for conversion into UpdateValue: {value:#?}"
+                "unsupported conversion into UpdateValue from value: {value:#?}"
             ))?,
         };
         Ok(update_value)
@@ -618,6 +629,7 @@ impl Ast {
                 list.args
                     .iter()
                     .map(|arg| -> Result<_> {
+                        // FIXME: move to TryFrom
                         let arg = match arg {
                             sqlparser::ast::FunctionArg::ExprNamed { .. } => {
                                 Err("named expressions are not supported in function arguments")?
@@ -1275,7 +1287,7 @@ impl Ast {
                 buf.write_all(b", ")?;
             }
             Self::write_quoted(dialect, &mut *buf, assignment.target.as_bytes())?;
-            buf.write(b"=")?;
+            buf.write_all(b"=")?;
             match &assignment.value {
                 UpdateValue::Null => buf.write_all(b"NULL")?,
                 UpdateValue::String(string) => {
