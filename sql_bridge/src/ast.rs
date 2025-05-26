@@ -567,7 +567,8 @@ pub enum Op {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DropObjectType {
     Table,
-    Index,
+    // TODO: in mysql index drop is defined on table, which isn't supported yet by sqlparser
+    // Index,
 }
 
 impl TryFrom<&BinaryOperator> for Op {
@@ -984,7 +985,6 @@ impl Ast {
     fn parse_drop(object_type: &ObjectType, if_exists: bool, names: &[ObjectName]) -> Result<Self> {
         let object_type = match object_type {
             ObjectType::Table => DropObjectType::Table,
-            ObjectType::Index => DropObjectType::Index,
             _ => Err(format!("drop of {object_type:?} is not supported"))?,
         };
         if names.len() > 1 {
@@ -1341,7 +1341,6 @@ impl Ast {
     ) -> Result<()> {
         match object_type {
             DropObjectType::Table => buf.write_all(b"DROP TABLE ")?,
-            DropObjectType::Index => buf.write_all(b"DROP INDEX ")?,
         };
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
