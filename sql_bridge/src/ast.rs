@@ -11,11 +11,10 @@ use std::{
 use sqlparser::{
     ast::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
-
         ColumnOptionDef, CreateIndex, CreateTable, Delete, ExactNumberInfo, Expr, FromTable,
-        FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query,
-        SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor,
-        TableWithJoins, UpdateTableFromKind, Value,
+        FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart, ObjectType, OrderByExpr,
+        Query, SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint,
+        TableFactor, TableWithJoins, UpdateTableFromKind, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -1036,6 +1035,7 @@ impl Ast {
         };
 
         Ok(Ast::Delete { from, selection })
+    }
 
     fn parse_drop(object_type: &ObjectType, if_exists: bool, names: &[ObjectName]) -> Result<Self> {
         let object_type = match object_type {
@@ -1402,6 +1402,8 @@ impl Ast {
             buf.write_all(b" WHERE ")?;
             Self::selection_to_sql(dialect, &mut *buf, selection)?;
         };
+        Ok(())
+    }
 
     fn drop_to_sql(
         dialect: impl ToQuery,
