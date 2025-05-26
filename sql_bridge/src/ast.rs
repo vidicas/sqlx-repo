@@ -607,7 +607,7 @@ impl TryFrom<&[TableWithJoins]> for From {
                 TableFactor::Table { name, .. } => Ast::parse_object_name(name)?,
                 other => Err(format!("unsupported table factor: {other:?}"))?,
             },
-            other => Err("joins are not supported yet: {tables:?}")?,
+            other => Err(format!("joins are not supported yet: {tables:?}"))?,
         };
         Ok(From::Table(from))
     }
@@ -723,7 +723,7 @@ impl Ast {
             .map(|IndexColumn { column, .. }| -> Result<String> {
                 match &column.expr {
                     Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
-                    expr => Err("unsupported index column: {expr:?}")?,
+                    expr => Err(format!("unsupported index column: {expr:?}"))?,
                 }
             })
             .collect::<Result<Vec<String>>>()?;
@@ -830,7 +830,7 @@ impl Ast {
                                 sqlparser::ast::OrderByOptions { nulls_first, .. }
                                     if nulls_first.is_some() =>
                                 {
-                                    Err("order by with nulls first not supported".to_string())?
+                                    Err("order by with nulls first not supported")?
                                 }
                                 sqlparser::ast::OrderByOptions { asc, .. } => match asc {
                                     None => OrderOption::None,
