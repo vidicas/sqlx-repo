@@ -62,3 +62,24 @@ fn drop_column() {
         "ALTER TABLE `test` DROP COLUMN `foo`"
     );
 }
+
+#[test]
+fn rename_column() {
+    let query = "alter table test rename column old_col to new_col";
+    let mut ast = parse(query).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap(),
+        "ALTER TABLE `test` RENAME COLUMN `old_col` TO `new_col`"
+    );
+    assert_eq!(
+        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        "ALTER TABLE \"test\" RENAME COLUMN \"old_col\" TO \"new_col\""
+    );
+    assert_eq!(
+        ast.to_sql(SQLiteDialect {}).unwrap(),
+        "ALTER TABLE `test` RENAME COLUMN `old_col` TO `new_col`"
+    );
+}

@@ -637,9 +637,10 @@ impl TryFrom<&[TableWithJoins]> for From {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AlterTableOperation {
-    RenameTable { to: String },
-    DropColumn { name: String },
     AddColumn { column: Column },
+    RenameColumn { from: String, to: String },
+    DropColumn { name: String },
+    RenameTable { to: String },
 }
 
 impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
@@ -655,7 +656,6 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 column_def,
                 column_position,
             } => {
-                println!("op: {:?}", op);
                 let _ = column_keyword;
                 if *if_not_exists {
                     Err("`IF NOT EXISTS` is not supported in `ALTER TABLE ADD COLUMN`")?
@@ -671,6 +671,13 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                     to: Ast::parse_object_name(table_name)?,
                 }
             }
+            sqlparser::ast::AlterTableOperation::RenameColumn {
+                old_column_name,
+                new_column_name,
+            } => AlterTableOperation::RenameColumn {
+                from: old_column_name.value.clone(),
+                to: new_column_name.value.clone(),
+            },
             sqlparser::ast::AlterTableOperation::DropColumn {
                 column_name,
                 if_exists,
@@ -1566,18 +1573,24 @@ impl Ast {
         buf.write_all(b"ALTER TABLE ")?;
         Self::write_quoted(&dialect, &mut buf, table_name)?;
         match operation {
-            AlterTableOperation::RenameTable { to } => {
-                buf.write_all(b" RENAME TO ")?;
-                Self::write_quoted(&dialect, &mut buf, to)?;
-            }
             AlterTableOperation::AddColumn { column } => {
                 buf.write_all(b" ADD COLUMN ")?;
                 let columns: &[Column] = slice::from_ref(column);
                 Self::table_columns_to_sql(&dialect, &mut buf, columns, "")?;
             }
+            AlterTableOperation::RenameColumn { from, to } => {
+                buf.write_all(b" RENAME COLUMN ")?;
+                Self::write_quoted(&dialect, &mut buf, from)?;
+                buf.write_all(b" TO ")?;
+                Self::write_quoted(&dialect, &mut buf, to)?;
+            }
             AlterTableOperation::DropColumn { name } => {
                 buf.write_all(b" DROP COLUMN ")?;
                 Self::write_quoted(&dialect, &mut buf, name)?;
+            }
+            AlterTableOperation::RenameTable { to } => {
+                buf.write_all(b" RENAME TO ")?;
+                Self::write_quoted(&dialect, &mut buf, to)?;
             }
         }
         Ok(())
