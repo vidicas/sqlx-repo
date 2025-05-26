@@ -11,10 +11,10 @@ use std::{
 use sqlparser::{
     ast::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
-        ColumnOptionDef, CreateIndex, CreateTable, ExactNumberInfo, Expr, FunctionArguments, Ident,
-        IndexColumn, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem,
-        SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
-        UpdateTableFromKind, Value,
+        ColumnOptionDef, CreateIndex, CreateTable, Delete, ExactNumberInfo, Expr, FromTable,
+        FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart, ObjectType, OrderByExpr,
+        Query, SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint,
+        TableFactor, TableWithJoins, UpdateTableFromKind, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -367,7 +367,7 @@ pub enum Ast {
     Select {
         distinct: bool,
         projections: Vec<Projection>,
-        from: String,
+        from: From,
         selection: Option<Selection>,
         group_by: Vec<GroupByParameter>,
         order_by: Vec<OrderByParameter>,
@@ -380,6 +380,10 @@ pub enum Ast {
     Update {
         table: String,
         assignments: Vec<UpdateAssignment>,
+        selection: Option<Selection>,
+    },
+    Delete {
+        from: From,
         selection: Option<Selection>,
     },
     Drop {
@@ -583,6 +587,32 @@ impl TryFrom<&BinaryOperator> for Op {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum From {
+    Table(String),
+}
+
+impl TryFrom<&[TableWithJoins]> for From {
+    type Error = Error;
+
+    fn try_from(tables: &[TableWithJoins]) -> Result<Self, Self::Error> {
+        let from = match tables {
+            &[
+                TableWithJoins {
+                    ref relation,
+                    ref joins,
+                    ..
+                },
+            ] if joins.is_empty() => match relation {
+                TableFactor::Table { name, .. } => Ast::parse_object_name(name)?,
+                other => Err(format!("unsupported table factor: {other:?}"))?,
+            },
+            other => Err(format!("joins are not supported yet: {tables:?}"))?,
+        };
+        Ok(From::Table(from))
+    }
+}
+
 impl Ast {
     fn parse_object_name(name: &ObjectName) -> Result<String> {
         let name_parts = &name.0;
@@ -693,7 +723,7 @@ impl Ast {
             .map(|IndexColumn { column, .. }| -> Result<String> {
                 match &column.expr {
                     Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
-                    expr => Err("unsupported index column: {expr:?}")?,
+                    expr => Err(format!("unsupported index column: {expr:?}"))?,
                 }
             })
             .collect::<Result<Vec<String>>>()?;
@@ -758,19 +788,8 @@ impl Ast {
             })
             .collect::<Result<Vec<Projection>>>()?;
 
-        let from = match select.from.as_slice() {
-            &[
-                TableWithJoins {
-                    ref relation,
-                    ref joins,
-                    ..
-                },
-            ] if joins.is_empty() => match relation {
-                TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
-                other => Err(format!("unsupported table factor: {other:?}"))?,
-            },
-            other => Err("joins are not supported yet: {tables:?}")?,
-        };
+        let from = select.from.as_slice().try_into()?;
+
         let selection = match select
             .selection
             .as_ref()
@@ -811,7 +830,7 @@ impl Ast {
                                 sqlparser::ast::OrderByOptions { nulls_first, .. }
                                     if nulls_first.is_some() =>
                                 {
-                                    Err("order by with nulls first not supported".to_string())?
+                                    Err("order by with nulls first not supported")?
                                 }
                                 sqlparser::ast::OrderByOptions { asc, .. } => match asc {
                                     None => OrderOption::None,
@@ -982,6 +1001,42 @@ impl Ast {
         })
     }
 
+    fn parse_delete(delete: &Delete) -> Result<Ast> {
+        if !delete.tables.is_empty() {
+            Err("multi tables delete is not supported")?
+        }
+        if delete.using.is_some() {
+            Err("delete with using is not supported")?
+        }
+        if delete.returning.is_some() {
+            Err("delete with returning is not supported")?
+        }
+        if !delete.order_by.is_empty() {
+            Err("delete with order by is not supported")?
+        }
+        if delete.limit.is_some() {
+            Err("delete with limit is not supported")?
+        }
+
+        let tables = match &delete.from {
+            FromTable::WithFromKeyword(tables) => tables,
+            FromTable::WithoutKeyword(_) => Err("delete without from keyword is not supported")?,
+        };
+        let from = tables.as_slice().try_into()?;
+
+        let selection = match delete
+            .selection
+            .as_ref()
+            .map(|selection| selection.try_into())
+        {
+            None => None,
+            Some(Err(e)) => Err(e)?,
+            Some(Ok(selection)) => Some(selection),
+        };
+
+        Ok(Ast::Delete { from, selection })
+    }
+
     fn parse_drop(object_type: &ObjectType, if_exists: bool, names: &[ObjectName]) -> Result<Self> {
         let object_type = match object_type {
             ObjectType::Table => DropObjectType::Table,
@@ -1050,9 +1105,7 @@ impl Ast {
                         returning.as_deref(),
                         or.as_ref(),
                     )?,
-                    Statement::Delete(delete) => {
-                        unimplemented!()
-                    }
+                    Statement::Delete(delete) => Self::parse_delete(delete)?,
                     _ => Err(format!("unsupported statement: {statement:?}"))?,
                 };
                 Ok(result)
@@ -1142,7 +1195,7 @@ impl Ast {
         mut buf: impl Write,
         distinct: bool,
         projections: &[Projection],
-        from: &str,
+        from: &From,
         selection: Option<&Selection>,
         group_by: &[GroupByParameter],
         order_by: &[OrderByParameter],
@@ -1171,7 +1224,10 @@ impl Ast {
             }
         }
         buf.write_all(b" FROM ")?;
-        Self::write_quoted(&dialect, &mut buf, from)?;
+
+        match from {
+            From::Table(name) => Self::write_quoted(&dialect, &mut buf, name)?,
+        }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
             Self::selection_to_sql(&dialect, &mut buf, selection)?;
@@ -1332,6 +1388,23 @@ impl Ast {
         Ok(())
     }
 
+    fn delete_to_sql(
+        dialect: &impl ToQuery,
+        buf: &mut impl Write,
+        from: &From,
+        selection: Option<&Selection>,
+    ) -> Result<()> {
+        buf.write_all(b"DELETE FROM ")?;
+        match from {
+            From::Table(name) => Self::write_quoted(dialect, &mut *buf, name)?,
+        }
+        if let Some(selection) = selection.as_ref() {
+            buf.write_all(b" WHERE ")?;
+            Self::selection_to_sql(dialect, &mut *buf, selection)?;
+        };
+        Ok(())
+    }
+
     fn drop_to_sql(
         dialect: impl ToQuery,
         mut buf: impl Write,
@@ -1432,6 +1505,9 @@ impl Ast {
                 assignments.as_slice(),
                 selection.as_ref(),
             )?,
+            Ast::Delete { from, selection } => {
+                Self::delete_to_sql(&dialect, &mut buf, from, selection.as_ref())?
+            }
             Ast::Drop {
                 object_type,
                 if_exists,
