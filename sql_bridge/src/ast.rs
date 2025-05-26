@@ -11,6 +11,7 @@ use std::{
 use sqlparser::{
     ast::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
+
         ColumnOptionDef, CreateIndex, CreateTable, Delete, ExactNumberInfo, Expr, FromTable,
         FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart, OrderByExpr, Query,
         SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor,
@@ -386,6 +387,11 @@ pub enum Ast {
         from: From,
         selection: Option<Selection>,
     },
+    Drop {
+        object_type: DropObjectType,
+        if_exists: bool,
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -561,6 +567,13 @@ impl TryFrom<&Expr> for UpdateValue {
 pub enum Op {
     Eq,
     And,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DropObjectType {
+    Table,
+    // TODO: in mysql index drop is defined on table, which isn't supported yet by sqlparser
+    // Index,
 }
 
 impl TryFrom<&BinaryOperator> for Op {
@@ -1023,6 +1036,21 @@ impl Ast {
         };
 
         Ok(Ast::Delete { from, selection })
+
+    fn parse_drop(object_type: &ObjectType, if_exists: bool, names: &[ObjectName]) -> Result<Self> {
+        let object_type = match object_type {
+            ObjectType::Table => DropObjectType::Table,
+            _ => Err(format!("drop of {object_type:?} is not supported"))?,
+        };
+        if names.len() > 1 {
+            Err("multiple names are not supported")?
+        }
+        let name = Self::parse_object_name(names.first().ok_or("no drop names found")?)?;
+        Ok(Ast::Drop {
+            object_type,
+            if_exists,
+            name,
+        })
     }
 
     pub fn parse(query: &str) -> Result<Vec<Ast>> {
@@ -1060,9 +1088,7 @@ impl Ast {
                         restrict,
                         purge,
                         temporary,
-                    } => {
-                        unimplemented!()
-                    }
+                    } => Self::parse_drop(object_type, *if_exists, names)?,
                     Statement::Insert(insert) => Self::parse_insert(insert)?,
                     Statement::Update {
                         table,
@@ -1377,6 +1403,20 @@ impl Ast {
             Self::selection_to_sql(dialect, &mut *buf, selection)?;
         };
 
+    fn drop_to_sql(
+        dialect: impl ToQuery,
+        mut buf: impl Write,
+        object_type: &DropObjectType,
+        if_exists: bool,
+        name: &str,
+    ) -> Result<()> {
+        match object_type {
+            DropObjectType::Table => buf.write_all(b"DROP TABLE ")?,
+        };
+        if if_exists {
+            buf.write_all(b"IF EXISTS ")?;
+        }
+        Self::write_quoted(&dialect, &mut buf, name);
         Ok(())
     }
 
@@ -1466,6 +1506,11 @@ impl Ast {
             Ast::Delete { from, selection } => {
                 Self::delete_to_sql(&dialect, &mut buf, from, selection.as_ref())?
             }
+            Ast::Drop {
+                object_type,
+                if_exists,
+                name,
+            } => Self::drop_to_sql(dialect, &mut buf, object_type, *if_exists, name)?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }
