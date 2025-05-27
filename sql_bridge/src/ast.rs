@@ -6,6 +6,7 @@ use std::{
     io::{Cursor, Write},
     ops::Deref,
     path::Display,
+    slice,
 };
 
 use sqlparser::{
@@ -122,6 +123,23 @@ pub struct Column {
     pub name: String,
     pub data_type: DataType,
     pub options: ColumnOptions,
+}
+
+impl TryFrom<&ColumnDef> for Column {
+    type Error = Error;
+
+    fn try_from(value: &ColumnDef) -> std::result::Result<Self, Self::Error> {
+        let ColumnDef {
+            name,
+            data_type,
+            options,
+        } = value;
+        Ok(Self {
+            name: name.value.clone(),
+            data_type: data_type.try_into()?,
+            options: ColumnOptions::try_from(options.as_slice())?,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -357,6 +375,10 @@ pub enum Ast {
         name: String,
         columns: Vec<Column>,
         constraints: Constraints,
+    },
+    AlterTable {
+        name: String,
+        operation: AlterTableOperation,
     },
     CreateIndex {
         unique: bool,
@@ -613,6 +635,70 @@ impl TryFrom<&[TableWithJoins]> for From {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlterTableOperation {
+    AddColumn { column: Column },
+    RenameColumn { from: String, to: String },
+    DropColumn { name: String },
+    RenameTable { to: String },
+}
+
+impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
+    type Error = Error;
+
+    fn try_from(
+        op: &sqlparser::ast::AlterTableOperation,
+    ) -> std::result::Result<Self, Self::Error> {
+        let op = match op {
+            sqlparser::ast::AlterTableOperation::AddColumn {
+                column_keyword,
+                if_not_exists,
+                column_def,
+                column_position,
+            } => {
+                let _ = column_keyword;
+                if *if_not_exists {
+                    Err("`IF NOT EXISTS` is not supported in `ALTER TABLE ADD COLUMN`")?
+                }
+                if column_position.is_some() {
+                    Err("column position is not supported in `ALTER TABLE ADD COLUMN")?
+                }
+                let column = column_def.try_into()?;
+                AlterTableOperation::AddColumn { column }
+            }
+            sqlparser::ast::AlterTableOperation::RenameTable { table_name } => {
+                AlterTableOperation::RenameTable {
+                    to: Ast::parse_object_name(table_name)?,
+                }
+            }
+            sqlparser::ast::AlterTableOperation::RenameColumn {
+                old_column_name,
+                new_column_name,
+            } => AlterTableOperation::RenameColumn {
+                from: old_column_name.value.clone(),
+                to: new_column_name.value.clone(),
+            },
+            sqlparser::ast::AlterTableOperation::DropColumn {
+                column_name,
+                if_exists,
+                drop_behavior,
+            } => {
+                if *if_exists {
+                    Err("`IF EXISTS` is not supported in `ALTER TABLE DROP COLUMN`")?
+                }
+                if drop_behavior.is_some() {
+                    Err("drop behaviour is not supported in `ALTER TABLE DROP COLUMN`")?;
+                }
+                AlterTableOperation::DropColumn {
+                    name: column_name.value.clone(),
+                }
+            }
+            _ => Err(format!("unsupported operation: {op:?}"))?,
+        };
+        Ok(op)
+    }
+}
+
 impl Ast {
     fn parse_object_name(name: &ObjectName) -> Result<String> {
         let name_parts = &name.0;
@@ -633,20 +719,8 @@ impl Ast {
         let columns = {
             columns
                 .iter()
-                .map(
-                    |ColumnDef {
-                         name,
-                         data_type,
-                         options,
-                     }| {
-                        Ok(Column {
-                            name: name.value.clone(),
-                            data_type: data_type.try_into()?,
-                            options: ColumnOptions::try_from(options.as_slice())?,
-                        })
-                    },
-                )
-                .collect::<Result<Vec<Column>>>()?
+                .map(TryFrom::try_from)
+                .collect::<Result<Vec<_>>>()?
         };
         Ok(Ast::CreateTable {
             if_not_exists,
@@ -654,6 +728,38 @@ impl Ast {
             columns,
             constraints: Constraints::try_from(constraints)?,
         })
+    }
+
+    fn parse_alter_table(
+        name: &ObjectName,
+        if_exists: bool,
+        only: bool,
+        operations: &[sqlparser::ast::AlterTableOperation],
+        location: Option<&sqlparser::ast::HiveSetLocation>,
+        on_cluster: Option<&Ident>,
+    ) -> Result<Ast> {
+        // sqlite doesn't support if exists in alter
+        if if_exists {
+            Err("if exists is not supported in ALTER TABLE")?
+        }
+        // sqlite doesn't support `ON` clause in alter table
+        if only {
+            Err("`ON` keyword is not supported in ALTER TABLE")?
+        }
+        // clickhouse syntax
+        if on_cluster.is_some() {
+            Err("ON CLUSTER syntax is not supported")?
+        }
+        // hive syntax
+        if location.is_some() {
+            Err("LOCATION syntax is not supported")?
+        }
+        let name = Self::parse_object_name(name)?;
+        if operations.len() != 1 {
+            Err("ALTER TABLE only supports single operation")?
+        }
+        let operation = operations.first().unwrap().try_into()?;
+        Ok(Ast::AlterTable { name, operation })
     }
 
     fn parse_function_args(args: &FunctionArguments) -> Result<Vec<FunctionArg>> {
@@ -1072,9 +1178,14 @@ impl Ast {
                         operations,
                         location,
                         on_cluster,
-                    } => {
-                        unimplemented!()
-                    }
+                    } => Self::parse_alter_table(
+                        name,
+                        *if_exists,
+                        *only,
+                        operations.as_slice(),
+                        location.as_ref(),
+                        on_cluster.as_ref(),
+                    )?,
                     Statement::CreateIndex(index) => Self::parse_create_index(index)?,
                     Statement::Query(query) => Self::parse_query(query)?,
                     Statement::AlterIndex { name, operation } => {
@@ -1127,17 +1238,7 @@ impl Ast {
         }
         Self::write_quoted(&dialect, &mut buf, name)?;
         buf.write_all(b" (\n")?;
-        for (pos, column) in columns.iter().enumerate() {
-            Self::write_quoted(&dialect, &mut buf, &column.name)?;
-            buf.write_all(b" ")?;
-
-            dialect.emit_column_spec(column, &mut buf)?;
-
-            // push comma if column is not last
-            if pos != columns.len() - 1 {
-                buf.write_all(b",\n")?;
-            }
-        }
+        Self::table_columns_to_sql(&dialect, &mut buf, columns, "\n")?;
         if constraints.len() > 0 {
             buf.write_all(b",\n")?;
         }
@@ -1159,6 +1260,25 @@ impl Ast {
             }
         }
         buf.write_all(b"\n)")?;
+        Ok(())
+    }
+
+    fn table_columns_to_sql(
+        dialect: &impl ToQuery,
+        buf: &mut impl Write,
+        columns: &[Column],
+        separator: &str,
+    ) -> Result<()> {
+        for (pos, column) in columns.iter().enumerate() {
+            Self::write_quoted(dialect, &mut *buf, &column.name)?;
+            buf.write_all(b" ")?;
+
+            dialect.emit_column_spec(column, &mut *buf)?;
+            if pos != columns.len() - 1 {
+                buf.write_all(b",")?;
+                buf.write_all(separator.as_bytes())?;
+            }
+        }
         Ok(())
     }
 
@@ -1424,7 +1544,7 @@ impl Ast {
 
     fn write_quoted(
         dialect: &impl ToQuery,
-        mut buf: impl Write,
+        buf: &mut impl Write,
         input: impl AsRef<[u8]>,
     ) -> Result<()> {
         buf.write_all(dialect.quote())?;
@@ -1444,6 +1564,38 @@ impl Ast {
         Ok(())
     }
 
+    fn alter_table_to_sql(
+        dialect: impl ToQuery,
+        mut buf: impl Write,
+        table_name: &str,
+        operation: &AlterTableOperation,
+    ) -> Result<()> {
+        buf.write_all(b"ALTER TABLE ")?;
+        Self::write_quoted(&dialect, &mut buf, table_name)?;
+        match operation {
+            AlterTableOperation::AddColumn { column } => {
+                buf.write_all(b" ADD COLUMN ")?;
+                let columns: &[Column] = slice::from_ref(column);
+                Self::table_columns_to_sql(&dialect, &mut buf, columns, "")?;
+            }
+            AlterTableOperation::RenameColumn { from, to } => {
+                buf.write_all(b" RENAME COLUMN ")?;
+                Self::write_quoted(&dialect, &mut buf, from)?;
+                buf.write_all(b" TO ")?;
+                Self::write_quoted(&dialect, &mut buf, to)?;
+            }
+            AlterTableOperation::DropColumn { name } => {
+                buf.write_all(b" DROP COLUMN ")?;
+                Self::write_quoted(&dialect, &mut buf, name)?;
+            }
+            AlterTableOperation::RenameTable { to } => {
+                buf.write_all(b" RENAME TO ")?;
+                Self::write_quoted(&dialect, &mut buf, to)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn to_sql(&self, dialect: impl ToQuery) -> Result<String> {
         let mut buf = Cursor::new(Vec::with_capacity(1024));
         match self {
@@ -1460,6 +1612,9 @@ impl Ast {
                 columns,
                 constraints,
             )?,
+            Ast::AlterTable { name, operation } => {
+                Self::alter_table_to_sql(dialect, &mut buf, name.as_str(), operation)?
+            }
             Ast::CreateIndex {
                 unique,
                 name,
