@@ -12,10 +12,11 @@ use std::{
 use sqlparser::{
     ast::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
-        ColumnOptionDef, CreateIndex, CreateTable, Delete, ExactNumberInfo, Expr, FromTable,
-        FunctionArguments, Ident, IndexColumn, ObjectName, ObjectNamePart, ObjectType, OrderByExpr,
-        Query, SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint,
-        TableFactor, TableWithJoins, UpdateTableFromKind, Value,
+        ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, Delete, ExactNumberInfo,
+        Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
+        ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem, SetExpr,
+        SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
+        UpdateTableFromKind, Value,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -710,11 +711,237 @@ impl Ast {
     }
 
     fn parse_create_table(
-        if_not_exists: bool,
-        name: &ObjectName,
-        columns: &[ColumnDef],
-        constraints: &[TableConstraint],
+        SqlParserCreateTable {
+            or_replace,
+            temporary,
+            external,
+            global,
+            if_not_exists,
+            transient,
+            volatile,
+            iceberg,
+            name,
+            columns,
+            constraints,
+            hive_distribution,
+            hive_formats,
+            table_properties,
+            with_options,
+            file_format,
+            location,
+            query,
+            without_rowid,
+            like,
+            clone,
+            engine,
+            comment,
+            auto_increment_offset,
+            default_charset,
+            collation,
+            on_commit,
+            on_cluster,
+            primary_key,
+            order_by,
+            partition_by,
+            cluster_by,
+            clustered_by,
+            options,
+            inherits,
+            strict,
+            copy_grants,
+            enable_schema_evolution,
+            change_tracking,
+            data_retention_time_in_days,
+            max_data_extension_time_in_days,
+            default_ddl_collation,
+            with_aggregation_policy,
+            with_row_access_policy,
+            with_tags,
+            external_volume,
+            base_location,
+            catalog,
+            catalog_sync,
+            storage_serialization_policy,
+        }: &SqlParserCreateTable,
     ) -> Result<Ast> {
+        if *or_replace {
+            Err("'or replace' is not supported in create table")?
+        }
+        if *temporary {
+            Err("temporary is not supported in create table")?
+        }
+        if *external {
+            Err("external is not supported in create table")?
+        }
+        if global.is_some() {
+            Err("global is not supported in create table")?
+        }
+        if *transient {
+            Err("transient is not supported in create table")?
+        }
+        if *volatile {
+            Err("volatile is not supported in create table")?
+        }
+        if *iceberg {
+            Err("iceberg is not supported in create table")?
+        }
+        match hive_distribution {
+            HiveDistributionStyle::NONE => {}
+            _ => Err("hive distribution style is not supported in create_table")?,
+        }
+
+        // Hive formats for some reason are always Some()
+        if let Some(HiveFormat {
+            row_format,
+            serde_properties,
+            storage,
+            location,
+        }) = hive_formats
+        {
+            if row_format.is_some()
+                || serde_properties.is_some()
+                || storage.is_some()
+                || location.is_some()
+            {
+                Err("hive formats are not supported in create table")?
+            }
+        }
+
+        if !table_properties.is_empty() {
+            Err("table properties is not supported in create table")?
+        }
+        if !with_options.is_empty() {
+            Err("'with options' is not supported in create table")?
+        }
+        if file_format.is_some() {
+            Err("file format is not supported in create table")?
+        }
+        if location.is_some() {
+            Err("location is not supported in create table")?
+        }
+        if query.is_some() {
+            Err("query is not supported in create table")?
+        }
+        if *without_rowid {
+            Err("'without rowid' is not supported in create table")?
+        }
+        if like.is_some() {
+            Err("'like' is not supported in create table")?
+        }
+        if clone.is_some() {
+            Err("clone is not supported in create table")?
+        }
+        if engine.is_some() {
+            Err("engine is not supported in create table")?
+        }
+        if comment.is_some() {
+            Err("comment is not supported in create table")?
+        }
+        if auto_increment_offset.is_some() {
+            Err("auto increment offset is not supported in create table")?
+        }
+        if default_charset.is_some() {
+            Err("default charset is not supported in create table")?
+        }
+        if collation.is_some() {
+            Err("collation is not supported in create table")?
+        }
+        if on_commit.is_some() {
+            Err("'on commit' is not supported in create table")?
+        }
+        /// ClickHouse "ON CLUSTER" clause:
+        if on_cluster.is_some() {
+            Err("'on cluster' is not supported in create table")?
+        }
+        /// ClickHouse "PRIMARY KEY " clause.
+        if primary_key.is_some() {
+            Err("primary key is not supported in create table")?
+        }
+        /// ClickHouse "ORDER BY " clause.
+        if order_by.is_some() {
+            Err("'order by' is not supported in create table")?
+        }
+        /// BigQuery: A partition expression for the table.
+        if partition_by.is_some() {
+            Err("'partition by' is not supported in create table")?
+        }
+        /// BigQuery: Table clustering column list.
+        if cluster_by.is_some() {
+            Err("'cluster_by' is not supported in create table")?
+        }
+        /// Hive: Table clustering column list.
+        if clustered_by.is_some() {
+            Err("'clustered_by' is not supported in create table")?
+        }
+        /// BigQuery: Table options list.
+        if options.is_some() {
+            Err("options are not supported in create table")?
+        }
+        /// Postgres `INHERITs` clause, which contains the list of tables from which the new table inherits.
+        if inherits.is_some() {
+            Err("inherits are not supported in create table")?
+        }
+        /// SQLite "STRICT" clause.
+        if *strict {
+            Err("strict is not supported in create table")?
+        }
+        /// Snowflake "COPY GRANTS" clause.
+        if *copy_grants {
+            Err("copy grant is not supported in create table")?
+        }
+        /// Snowflake "ENABLE_SCHEMA_EVOLUTION" clause.
+        if enable_schema_evolution.is_some() {
+            Err("'enable schema evolution' is not supported in create table")?
+        }
+        /// Snowflake "CHANGE_TRACKING" clause.
+        if change_tracking.is_some() {
+            Err("'change tracking' is not supported in create table")?
+        }
+        /// Snowflake "DATA_RETENTION_TIME_IN_DAYS" clause.
+        if data_retention_time_in_days.is_some() {
+            Err("'data retention time in days' is not supported in create table")?
+        }
+        /// Snowflake "MAX_DATA_EXTENSION_TIME_IN_DAYS" clause.
+        if max_data_extension_time_in_days.is_some() {
+            Err("'max data extension time in days' is not supported in create table")?
+        }
+        /// Snowflake "DEFAULT_DDL_COLLATION" clause.
+        if default_ddl_collation.is_some() {
+            Err("'default ddl collation' is not supported in create table")?
+        }
+        /// Snowflake "WITH AGGREGATION POLICY" clause.
+        if with_aggregation_policy.is_some() {
+            Err("'with aggregation policy' is not supported in create table")?
+        }
+        /// Snowflake "WITH ROW ACCESS POLICY" clause.
+        if with_row_access_policy.is_some() {
+            Err("'with row access policy' is not supported in create table")?
+        }
+        /// Snowflake "WITH TAG" clause.
+        if with_tags.is_some() {
+            Err("'with tags' is not supported in create table")?
+        }
+        /// Snowflake "EXTERNAL_VOLUME" clause for Iceberg tables
+        if external_volume.is_some() {
+            Err("'external volume' is not supported in create table")?
+        }
+        /// Snowflake "BASE_LOCATION" clause for Iceberg tables
+        if base_location.is_some() {
+            Err("'base location' is not supported in create table")?
+        }
+        /// Snowflake "CATALOG" clause for Iceberg tables
+        if catalog.is_some() {
+            Err("catalog is not supported in create table")?
+        }
+        /// Snowflake "CATALOG_SYNC" clause for Iceberg tables
+        if catalog_sync.is_some() {
+            Err("'catalog sync' is not supported in create table")?
+        }
+        /// Snowflake "STORAGE_SERIALIZATION_POLICY" clause for Iceberg tables
+        if storage_serialization_policy.is_some() {
+            Err("'storage serialization policy' is not supported in create table")?
+        }
+
         let name = Self::parse_object_name(name)?;
         let columns = {
             columns
@@ -723,10 +950,10 @@ impl Ast {
                 .collect::<Result<Vec<_>>>()?
         };
         Ok(Ast::CreateTable {
-            if_not_exists,
+            if_not_exists: *if_not_exists,
             name,
             columns,
-            constraints: Constraints::try_from(constraints)?,
+            constraints: Constraints::try_from(constraints.as_slice())?,
         })
     }
 
@@ -1164,13 +1391,7 @@ impl Ast {
             .iter()
             .map(|statement| {
                 let result = match statement {
-                    Statement::CreateTable(CreateTable {
-                        if_not_exists,
-                        name,
-                        columns,
-                        constraints,
-                        ..
-                    }) => Self::parse_create_table(*if_not_exists, name, columns, constraints)?,
+                    Statement::CreateTable(create_table) => Self::parse_create_table(create_table)?,
                     Statement::AlterTable {
                         name,
                         if_exists,
