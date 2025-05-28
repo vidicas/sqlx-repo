@@ -413,6 +413,7 @@ pub enum Ast {
         object_type: DropObjectType,
         if_exists: bool,
         name: String,
+        table: Option<String>,
     },
 }
 
@@ -591,11 +592,10 @@ pub enum Op {
     And,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DropObjectType {
     Table,
-    // TODO: in mysql index drop is defined on table, which isn't supported yet by sqlparser
-    // Index,
+    Index,
 }
 
 impl TryFrom<&BinaryOperator> for Op {
@@ -1123,15 +1123,11 @@ impl Ast {
 
         let from = select.from.as_slice().try_into()?;
 
-        let selection = match select
+        let selection = select
             .selection
             .as_ref()
             .map(|selection| selection.try_into())
-        {
-            None => None,
-            Some(Err(e)) => Err(e)?,
-            Some(Ok(selection)) => Some(selection),
-        };
+            .transpose()?;
         let group_by = match &select.group_by {
             sqlparser::ast::GroupByExpr::Expressions(expr, modifier) if modifier.is_empty() => expr
                 .iter()
@@ -1322,11 +1318,9 @@ impl Ast {
                 Ok(UpdateAssignment { target, value })
             })
             .collect::<Result<Vec<UpdateAssignment>>>()?;
-        let selection: Option<Selection> = match selection.map(|selection| selection.try_into()) {
-            None => None,
-            Some(Err(e)) => Err(e)?,
-            Some(Ok(selection)) => Some(selection),
-        };
+        let selection: Option<Selection> = selection
+            .map(|selection| selection.try_into())
+            .transpose()?;
         Ok(Ast::Update {
             table,
             assignments,
@@ -1357,22 +1351,26 @@ impl Ast {
         };
         let from = tables.as_slice().try_into()?;
 
-        let selection = match delete
+        let selection = delete
             .selection
             .as_ref()
             .map(|selection| selection.try_into())
-        {
-            None => None,
-            Some(Err(e)) => Err(e)?,
-            Some(Ok(selection)) => Some(selection),
-        };
-
+            .transpose()?;
         Ok(Ast::Delete { from, selection })
     }
 
-    fn parse_drop(object_type: &ObjectType, if_exists: bool, names: &[ObjectName]) -> Result<Self> {
-        let object_type = match object_type {
-            ObjectType::Table => DropObjectType::Table,
+    fn parse_drop(
+        object_type: &ObjectType,
+        if_exists: bool,
+        names: &[ObjectName],
+        table: Option<&ObjectName>,
+    ) -> Result<Self> {
+        let (object_type, table) = match object_type {
+            ObjectType::Table => (DropObjectType::Table, None),
+            ObjectType::Index => (
+                DropObjectType::Index,
+                table.map(Self::parse_object_name).transpose()?,
+            ),
             _ => Err(format!("drop of {object_type:?} is not supported"))?,
         };
         if names.len() > 1 {
@@ -1383,6 +1381,7 @@ impl Ast {
             object_type,
             if_exists,
             name,
+            table,
         })
     }
 
@@ -1420,7 +1419,8 @@ impl Ast {
                         restrict,
                         purge,
                         temporary,
-                    } => Self::parse_drop(object_type, *if_exists, names)?,
+                        table,
+                    } => Self::parse_drop(object_type, *if_exists, names, table.as_ref())?,
                     Statement::Insert(insert) => Self::parse_insert(insert)?,
                     Statement::Update {
                         table,
@@ -1749,17 +1749,31 @@ impl Ast {
     fn drop_to_sql(
         dialect: impl ToQuery,
         mut buf: impl Write,
-        object_type: &DropObjectType,
+        object_type: DropObjectType,
         if_exists: bool,
         name: &str,
+        table: Option<&str>,
     ) -> Result<()> {
         match object_type {
             DropObjectType::Table => buf.write_all(b"DROP TABLE ")?,
+            DropObjectType::Index => buf.write_all(b"DROP INDEX ")?,
         };
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
         }
         Self::write_quoted(&dialect, &mut buf, name);
+        match (
+            object_type == DropObjectType::Index,
+            dialect.drop_index_requires_table(),
+            table,
+        ) {
+            (true, true, Some(table)) => {
+                buf.write_all(b" ON ")?;
+                Self::write_quoted(&dialect, &mut buf, table)?;
+            }
+            (true, _, None) => Err("`DROP INDEX` requires table name")?,
+            _ => (),
+        };
         Ok(())
     }
 
@@ -1888,7 +1902,15 @@ impl Ast {
                 object_type,
                 if_exists,
                 name,
-            } => Self::drop_to_sql(dialect, &mut buf, object_type, *if_exists, name)?,
+                table,
+            } => Self::drop_to_sql(
+                dialect,
+                &mut buf,
+                *object_type,
+                *if_exists,
+                name,
+                table.as_ref().map(AsRef::as_ref),
+            )?,
         };
         Ok(String::from_utf8(buf.into_inner())?)
     }
@@ -1904,6 +1926,10 @@ pub trait ToQuery {
     }
 
     fn emit_column_spec(&self, column: &Column, buf: &mut dyn Write) -> Result<()>;
+
+    fn drop_index_requires_table(&self) -> bool {
+        false
+    }
 }
 
 impl ToQuery for MySqlDialect {
@@ -1978,6 +2004,10 @@ impl ToQuery for MySqlDialect {
             buf.write_all(options.as_bytes())?;
         }
         Ok(())
+    }
+
+    fn drop_index_requires_table(&self) -> bool {
+        true
     }
 }
 

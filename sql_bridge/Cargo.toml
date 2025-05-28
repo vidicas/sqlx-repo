@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-sqlparser = "0.56.0"
+#sqlparser = "0.56.0"
+sqlparser = { git = "https://github.com/vidicas/datafusion-sqlparser-rs", branch = "v56_mysql_drop_backport" }
+
