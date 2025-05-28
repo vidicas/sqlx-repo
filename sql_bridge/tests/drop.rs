@@ -1,14 +1,16 @@
 use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
-#[ignore]
 fn drop_index() {
-    let input = "DROP INDEX idx";
+    let input = "DROP INDEX idx ON tbl";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
-    assert_eq!(ast.to_sql(MySqlDialect {}).unwrap(), "DROP INDEX `idx`");
+    assert_eq!(
+        ast.to_sql(MySqlDialect {}).unwrap(),
+        "DROP INDEX `idx` ON `tbl`"
+    );
 
     assert_eq!(
         ast.to_sql(PostgreSqlDialect {}).unwrap(),
@@ -19,7 +21,6 @@ fn drop_index() {
 }
 
 #[test]
-#[ignore]
 fn drop_multiple_index() {
     let input = "DROP INDEX idx1, idx2";
     let ast = parse(input);
@@ -51,16 +52,15 @@ fn drop_multiple_table() {
 }
 
 #[test]
-#[ignore]
 fn drop_index_if_exists() {
-    let input = "DROP INDEX IF EXISTS idx";
+    let input = "DROP INDEX IF EXISTS idx ON tbl";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
         ast.to_sql(MySqlDialect {}).unwrap(),
-        "DROP INDEX IF EXISTS `idx`"
+        "DROP INDEX IF EXISTS `idx` ON `tbl`"
     );
 
     assert_eq!(
