@@ -8,15 +8,15 @@ fn test_basic_insert() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "UPDATE `test` SET `value`='foo' WHERE `key` = 1"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "UPDATE `test` SET `value`='foo' WHERE `key` = 1"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "UPDATE \"test\" SET \"value\"='foo' WHERE \"key\" = 1"
     );
 }

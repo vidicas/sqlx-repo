@@ -8,16 +8,16 @@ fn drop_index() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "DROP INDEX `idx` ON `tbl`"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DROP INDEX \"idx\"",
     );
 
-    assert_eq!(ast.to_sql(SQLiteDialect {}).unwrap(), "DROP INDEX `idx`",);
+    assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "DROP INDEX `idx`",);
 }
 
 #[test]
@@ -34,14 +34,14 @@ fn drop_table() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
-    assert_eq!(ast.to_sql(MySqlDialect {}).unwrap(), "DROP TABLE `test`");
+    assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "DROP TABLE `test`");
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DROP TABLE \"test\""
     );
 
-    assert_eq!(ast.to_sql(SQLiteDialect {}).unwrap(), "DROP TABLE `test`");
+    assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "DROP TABLE `test`");
 }
 
 #[test]
@@ -59,17 +59,17 @@ fn drop_index_if_exists() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "DROP INDEX IF EXISTS `idx` ON `tbl`"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DROP INDEX IF EXISTS \"idx\"",
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "DROP INDEX IF EXISTS `idx`",
     );
 }
@@ -82,17 +82,17 @@ fn drop_table_if_exists() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "DROP TABLE IF EXISTS `test`"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DROP TABLE IF EXISTS \"test\""
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "DROP TABLE IF EXISTS `test`"
     );
 }

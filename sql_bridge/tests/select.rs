@@ -7,13 +7,16 @@ fn test_simple_query() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
-    assert_eq!(ast.to_sql(MySqlDialect {}).unwrap(), "SELECT * FROM `test`");
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT * FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT * FROM \"test\""
     );
 }
@@ -26,15 +29,15 @@ fn test_query_with_projection() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT `id`, `key`, * FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT `id`, `key`, * FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT \"id\", \"key\", * FROM \"test\""
     );
 }
@@ -47,15 +50,15 @@ fn test_query_with_predicates() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT * FROM `test` WHERE `id` = 1 AND `key` = 'foo'"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT * FROM `test` WHERE `id` = 1 AND `key` = 'foo'"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT * FROM \"test\" WHERE \"id\" = 1 AND \"key\" = 'foo'"
     );
 }
@@ -68,15 +71,15 @@ fn test_count_function() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT COUNT(*) FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT COUNT(*) FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT COUNT(*) FROM \"test\""
     );
 
@@ -86,15 +89,15 @@ fn test_count_function() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT COUNT(`id`) FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT COUNT(`id`) FROM `test`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT COUNT(\"id\") FROM \"test\""
     );
 }
@@ -107,15 +110,15 @@ fn test_query_with_group_by() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT `key`, COUNT(*) FROM `test` GROUP BY (`key`)"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT `key`, COUNT(*) FROM `test` GROUP BY (`key`)"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT \"key\", COUNT(*) FROM \"test\" GROUP BY (\"key\")"
     );
 }
@@ -128,15 +131,15 @@ fn test_query_with_order_by() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "SELECT * FROM `test` ORDER BY `id` ASC, `key` DESC"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT * FROM \"test\" ORDER BY \"id\" ASC, \"key\" DESC"
     );
 }

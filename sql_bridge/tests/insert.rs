@@ -8,15 +8,15 @@ fn test_basic_insert() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (NULL, 1, 'one'), (NULL, 2, 'two')",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (NULL, 1, 'one'), (NULL, 2, 'two')",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "INSERT INTO \"test\"(\"id\", \"key\", \"value\") VALUES (NULL, 1, 'one'), (NULL, 2, 'two')",
     );
 }
@@ -29,15 +29,15 @@ fn test_basic_insert_with_placeholders() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?), (?, ?, ?)"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?), (?, ?, ?)"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "INSERT INTO \"test\"(\"id\", \"key\", \"value\") VALUES ($1, $2, $3), ($4, $5, $6)"
     );
 }
@@ -50,15 +50,15 @@ fn test_basic_insert_with_placeholders_with_cast() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?)"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "INSERT INTO `test`(`id`, `key`, `value`) VALUES (?, ?, ?)"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "INSERT INTO \"test\"(\"id\", \"key\", \"value\") VALUES ($1::JSON, $2::UUID, $3)"
     );
 }

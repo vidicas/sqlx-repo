@@ -8,15 +8,15 @@ fn rename_table() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "ALTER TABLE `test` RENAME TO `foo`",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "ALTER TABLE \"test\" RENAME TO \"foo\"",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "ALTER TABLE `test` RENAME TO `foo`",
     );
 }
@@ -29,15 +29,15 @@ fn add_column() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "ALTER TABLE `test` ADD COLUMN `foo` INT"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "ALTER TABLE \"test\" ADD COLUMN \"foo\" INT"
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "ALTER TABLE `test` ADD COLUMN `foo` INTEGER"
     );
 }
@@ -50,15 +50,15 @@ fn drop_column() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "ALTER TABLE `test` DROP COLUMN `foo`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "ALTER TABLE \"test\" DROP COLUMN \"foo\""
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "ALTER TABLE `test` DROP COLUMN `foo`"
     );
 }
@@ -71,15 +71,15 @@ fn rename_column() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "ALTER TABLE `test` RENAME COLUMN `old_col` TO `new_col`"
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "ALTER TABLE \"test\" RENAME COLUMN \"old_col\" TO \"new_col\""
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "ALTER TABLE `test` RENAME COLUMN `old_col` TO `new_col`"
     );
 }
