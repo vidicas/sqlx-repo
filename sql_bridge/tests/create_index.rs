@@ -8,17 +8,17 @@ fn create_unique_index() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "CREATE UNIQUE INDEX `idx` ON `table_name` (`id`, `org`)"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "CREATE UNIQUE INDEX \"idx\" ON \"table_name\" (\"id\", \"org\")",
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "CREATE UNIQUE INDEX `idx` ON `table_name` (`id`, `org`)"
     );
 }
@@ -31,17 +31,17 @@ fn create_index() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "CREATE INDEX `idx` ON `table_name` (`id`, `org`)"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "CREATE INDEX \"idx\" ON \"table_name\" (\"id\", \"org\")",
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "CREATE INDEX `idx` ON `table_name` (`id`, `org`)"
     );
 }

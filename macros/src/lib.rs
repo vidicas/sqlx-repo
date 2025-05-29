@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
+use sql_bridge::{Ast, MySqlDialect, PostgreSqlDialect, SQLiteDialect, ToQuery};
 use syn::{
     parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, 
     Expr, Ident, ImplItem, ItemImpl, Lit, ExprLit, Path, 
@@ -247,19 +248,61 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     .into()
 }
 
+fn asts_to_query(
+    ast: &[Ast],
+    dialect: &dyn ToQuery
+) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let queries = ast
+        .iter()
+        .map(|ast| ast.to_sql(dialect))
+        .collect::<Result<Vec<String>, _>>()?
+        .join(";");
+    Ok(queries)
+}
+
 #[proc_macro]
 pub fn query(input: TokenStream) -> TokenStream {
     let input: syn::Expr = syn::parse(input).expect("expected expression");
     match input {
         Expr::Lit(ExprLit{lit: Lit::Str(lit), ..})=> {
             let query = lit.value();
-            let mut ast = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect{}, &query)
-                .expect("failed to parse query");
-            if ast.len() != 1 {
-                panic!("expected exactly one statement in the query");
-            }
-            let ast = ast.pop().unwrap();
-            println!("ast: {}", ast);
+            let ast_list = match sql_bridge::Ast::parse(&query) {
+                Ok(ast) => ast,
+                Err(e) => {
+                    let err = format!("failed to parse query: {e}");
+                    return quote_spanned! {
+                        lit.span() => compile_error!(#err)
+                    }.into()
+                }
+            };
+            let ast_list = ast_list.as_slice();
+            let dialects: &[&dyn ToQuery] = &[&PostgreSqlDialect{}, &SQLiteDialect{}, &MySqlDialect{}];
+            let query_list = match dialects
+                .into_iter()
+                .map(|dialect| asts_to_query(ast_list, *dialect))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(q) => q,
+                Err(e) => {
+                    let err = format!("failed to build queries list: {e}");
+                    return quote_spanned! {
+                        lit.span() => compile_error!(#err)
+                    }.into()
+                }
+            };
+            let postgres_query = &query_list[0];
+            let sqlite_query = &query_list[1];
+            let mysql_query = &query_list[2];
+            quote_spanned! { 
+                lit.span() => {
+                    static QUERIES: [&'static str; 3] = [
+                        #postgres_query,
+                        #sqlite_query,
+                        #mysql_query
+                    ];
+                    __private::Query::<D>::query(QUERIES.as_slice())
+                }
+            }.into()
         },
         _ => {
             return quote!{
@@ -267,14 +310,4 @@ pub fn query(input: TokenStream) -> TokenStream {
             }.into()
         }
     }
-    quote!{ 
-        {
-            static QUERIES: [&'static str; 3] = [
-                "select postgres",
-                "select sqlite",
-                "select mysql",
-            ];
-            __private::Query::<D>::query(QUERIES.as_slice())
-        }
-    }.into()
 }

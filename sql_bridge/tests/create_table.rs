@@ -7,15 +7,15 @@ fn test_serial_no_primary_key() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 
@@ -24,15 +24,15 @@ fn test_serial_no_primary_key() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 
@@ -41,15 +41,15 @@ fn test_serial_no_primary_key() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&SQLiteDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap_err().to_string(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap_err().to_string(),
         "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint",
     );
 }
@@ -62,15 +62,15 @@ fn test_primary_key_creation() {
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` SMALLINT PRIMARY KEY AUTO_INCREMENT\n)",
-        ast.to_sql(MySqlDialect {}).unwrap()
+        ast.to_sql(&MySqlDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
-        ast.to_sql(SQLiteDialect {}).unwrap()
+        ast.to_sql(&SQLiteDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE \"test\" (\n\"id\" SMALLSERIAL PRIMARY KEY\n)",
-        ast.to_sql(PostgreSqlDialect {}).unwrap()
+        ast.to_sql(&PostgreSqlDialect {}).unwrap()
     );
 
     let query = "CREATE TABLE test (id serial primary key)";
@@ -79,15 +79,15 @@ fn test_primary_key_creation() {
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)",
-        ast.to_sql(MySqlDialect {}).unwrap()
+        ast.to_sql(&MySqlDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
-        ast.to_sql(SQLiteDialect {}).unwrap()
+        ast.to_sql(&SQLiteDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)",
-        ast.to_sql(PostgreSqlDialect {}).unwrap()
+        ast.to_sql(&PostgreSqlDialect {}).unwrap()
     );
 
     let query = "CREATE TABLE test (id bigserial primary key)";
@@ -96,15 +96,15 @@ fn test_primary_key_creation() {
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` BIGINT PRIMARY KEY AUTO_INCREMENT\n)",
-        ast.to_sql(MySqlDialect {}).unwrap()
+        ast.to_sql(&MySqlDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)",
-        ast.to_sql(SQLiteDialect {}).unwrap()
+        ast.to_sql(&SQLiteDialect {}).unwrap()
     );
     assert_eq!(
         "CREATE TABLE \"test\" (\n\"id\" BIGSERIAL PRIMARY KEY\n)",
-        ast.to_sql(PostgreSqlDialect {}).unwrap()
+        ast.to_sql(&PostgreSqlDialect {}).unwrap()
     );
 }
 
@@ -154,7 +154,7 @@ fn test_all_supported_types() {
 `bytes` BLOB,
 `json` JSON
 )"#,
-        ast.to_sql(MySqlDialect {}).unwrap()
+        ast.to_sql(&MySqlDialect {}).unwrap()
     );
 
     assert_eq!(
@@ -177,7 +177,7 @@ fn test_all_supported_types() {
 "bytes" BYTEA,
 "json" JSON
 )"#,
-        ast.to_sql(PostgreSqlDialect {}).unwrap()
+        ast.to_sql(&PostgreSqlDialect {}).unwrap()
     );
     assert_eq!(
         r#"CREATE TABLE `sample_types` (
@@ -199,7 +199,7 @@ fn test_all_supported_types() {
 `bytes` BLOB,
 `json` JSON
 )"#,
-        ast.to_sql(SQLiteDialect {}).unwrap()
+        ast.to_sql(&SQLiteDialect {}).unwrap()
     );
 }
 
@@ -212,17 +212,17 @@ fn test_mysql_style_primary_key() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)"
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "CREATE TABLE `test` (\n`id` INTEGER PRIMARY KEY\n)"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "CREATE TABLE \"test\" (\n\"id\" SERIAL PRIMARY KEY\n)"
     );
 }
@@ -236,17 +236,17 @@ fn test_composite_primary_key() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "CREATE TABLE `foo_baz` (\n`l` INT,\n`r` INT,\n`value` TEXT,\nPRIMARY KEY (`l`, `r`)\n)"
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "CREATE TABLE `foo_baz` (\n`l` INTEGER,\n`r` INTEGER,\n`value` TEXT,\nPRIMARY KEY (`l`, `r`)\n)"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "CREATE TABLE \"foo_baz\" (\n\"l\" INT,\n\"r\" INT,\n\"value\" TEXT,\nPRIMARY KEY (\"l\", \"r\")\n)"
     );
 }

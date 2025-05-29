@@ -7,14 +7,14 @@ fn delete_from() {
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
-    assert_eq!(ast.to_sql(MySqlDialect {}).unwrap(), "DELETE FROM `test`");
+    assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "DELETE FROM `test`");
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DELETE FROM \"test\""
     );
 
-    assert_eq!(ast.to_sql(SQLiteDialect {}).unwrap(), "DELETE FROM `test`");
+    assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "DELETE FROM `test`");
 }
 
 #[test]
@@ -25,17 +25,17 @@ fn delete_from_where() {
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        ast.to_sql(MySqlDialect {}).unwrap(),
+        ast.to_sql(&MySqlDialect {}).unwrap(),
         "DELETE FROM `test` WHERE `key` = 1"
     );
 
     assert_eq!(
-        ast.to_sql(PostgreSqlDialect {}).unwrap(),
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "DELETE FROM \"test\" WHERE \"key\" = 1"
     );
 
     assert_eq!(
-        ast.to_sql(SQLiteDialect {}).unwrap(),
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
         "DELETE FROM `test` WHERE `key` = 1"
     );
 }
