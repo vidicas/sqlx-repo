@@ -307,6 +307,11 @@ fn is_auto_increment_option(option: &sqlparser::ast::ColumnOption) -> bool {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constraint {
     PrimaryKey(Vec<String>),
+    ForeignKey {
+        columns: Vec<String>,
+        referred_columns: Vec<String>,
+        foreign_table: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -355,14 +360,53 @@ impl TryFrom<&[TableConstraint]> for Constraints {
     fn try_from(value: &[TableConstraint]) -> Result<Self, Self::Error> {
         let constraints = value
             .iter()
-            .map(|constraint| match constraint {
-                TableConstraint::PrimaryKey { columns, .. } => Ok(Constraint::PrimaryKey(
-                    columns
-                        .iter()
-                        .map(|Ident { value, .. }| value.clone())
-                        .collect(),
-                )),
-                _ => Err(format!("unsupported constraint: {constraint:?}")),
+            .map(|constraint| -> Result<_> {
+                let res = match constraint {
+                    TableConstraint::PrimaryKey { columns, .. } => Constraint::PrimaryKey(
+                        columns
+                            .iter()
+                            .map(|Ident { value, .. }| value.clone())
+                            .collect(),
+                    ),
+                    TableConstraint::ForeignKey {
+                        name,
+                        columns,
+                        foreign_table,
+                        referred_columns,
+                        on_delete,
+                        on_update,
+                        characteristics,
+                    } => {
+                        if name.is_some() {
+                            Err("named foreign key constraint is not supported")?
+                        }
+                        if on_delete.is_some() {
+                            Err("on delete in foreign key constraint is not supported")?
+                        }
+                        if on_update.is_some() {
+                            Err("on update in foreign key constraint is not supported")?
+                        }
+                        if characteristics.is_some() {
+                            Err("characteristics in foreign key constraint is not supported")?
+                        }
+                        let columns = columns
+                            .iter()
+                            .map(|Ident { value, .. }| value.clone())
+                            .collect();
+                        let referred_columns = referred_columns
+                            .iter()
+                            .map(|Ident { value, .. }| value.clone())
+                            .collect();
+                        let foreign_table = Ast::parse_object_name(foreign_table)?;
+                        Constraint::ForeignKey {
+                            columns,
+                            referred_columns,
+                            foreign_table,
+                        }
+                    }
+                    _ => Err(format!("unsupported constraint: {constraint:?}"))?,
+                };
+                Ok(res)
             })
             .collect::<Result<Vec<Constraint>, _>>()?;
         Ok(Constraints(constraints))
@@ -1470,6 +1514,29 @@ impl Ast {
                     for (pos, field) in fields.iter().enumerate() {
                         Self::write_quoted(dialect, &mut buf, field)?;
                         if pos != fields.len() - 1 {
+                            buf.write_all(b", ")?;
+                        }
+                    }
+                    buf.write_all(b")")?;
+                }
+                Constraint::ForeignKey {
+                    columns,
+                    referred_columns,
+                    foreign_table,
+                } => {
+                    buf.write_all(b"FOREIGN KEY (")?;
+                    for (pos, column) in columns.iter().enumerate() {
+                        Self::write_quoted(dialect, &mut buf, column)?;
+                        if pos != columns.len() - 1 {
+                            buf.write_all(b", ")?;
+                        }
+                    }
+                    buf.write_all(b") REFERENCES ")?;
+                    buf.write_all(foreign_table.as_bytes());
+                    buf.write_all(b"(")?;
+                    for (pos, column) in referred_columns.iter().enumerate() {
+                        Self::write_quoted(dialect, &mut buf, column)?;
+                        if pos != columns.len() - 1 {
                             buf.write_all(b", ")?;
                         }
                     }
