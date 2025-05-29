@@ -362,12 +362,36 @@ impl TryFrom<&[TableConstraint]> for Constraints {
             .iter()
             .map(|constraint| -> Result<_> {
                 let res = match constraint {
-                    TableConstraint::PrimaryKey { columns, .. } => Constraint::PrimaryKey(
-                        columns
-                            .iter()
-                            .map(|Ident { value, .. }| value.clone())
-                            .collect(),
-                    ),
+                    TableConstraint::PrimaryKey {
+                        columns,
+                        name,
+                        index_name,
+                        index_type,
+                        index_options,
+                        characteristics,
+                    } => {
+                        if name.is_some() {
+                            Err("PRIMARY KEY with name is not supported")?
+                        }
+                        if index_name.is_some() {
+                            Err("PRIMARY KEY with index name is not supported")?
+                        }
+                        if index_type.is_some() {
+                            Err("PRIMARY KEY with index type is not supported")?
+                        }
+                        if !index_options.is_empty() {
+                            Err("PRIMARY KEY with index options is not supported")?
+                        }
+                        if characteristics.is_some() {
+                            Err("PRIMARY KEY with characteristics is not supported")?
+                        }
+                        Constraint::PrimaryKey(
+                            columns
+                                .iter()
+                                .map(|Ident { value, .. }| value.clone())
+                                .collect(),
+                        )
+                    }
                     TableConstraint::ForeignKey {
                         name,
                         columns,
