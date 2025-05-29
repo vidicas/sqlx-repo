@@ -1107,17 +1107,36 @@ impl Ast {
             if_not_exists,
             unique,
             concurrently,
-            ..
+            using,
+            include,
+            nulls_distinct,
+            with,
+            predicate,
         }: &CreateIndex,
     ) -> Result<Self> {
         if *if_not_exists {
-            Err("index with existance check is not supported")?
+            Err("`CREATE INDEX` with existance check is not supported")?
         };
         if name.is_none() {
-            Err("index without name are not supported")?
+            Err("`CREATE INDEX` without name is not supported")?
         }
         if *concurrently {
-            Err("index with concurrent creation are not supported")?
+            Err("concurrent `CREATE INDEX` is not supported")?
+        }
+        if using.is_some() {
+            Err("`CREATE INDEX` with `USING` keyword is not supported")?
+        }
+        if !include.is_empty() {
+            Err("`CREATE INDEX` with `INCLUDE` is not supported")?
+        }
+        if nulls_distinct.is_some() {
+            Err("`CREATE INDEX` with `DISTINCT NULLS` is not supported")?
+        }
+        if !with.is_empty() {
+            Err("`CREATE INDEX` with `WITH` keyword is not supported")?
+        }
+        if predicate.is_some() {
+            Err("`CREATE INDEX` with predicates is not supported")?
         }
         let columns = columns
             .iter()
