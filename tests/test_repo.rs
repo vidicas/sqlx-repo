@@ -4,7 +4,8 @@ use sqlx_db_repo::prelude::*;
 #[repo(Send + Sync + std::fmt::Debug)]
 impl Repo for DatabaseRepository {
     async fn create_table(&self) -> Result<()> {
-        println!("query: {}", query!("select * from test"));
+        let query = query!("select * from test");
+        println!("query: {}", query);
         Ok(())
     }
 }

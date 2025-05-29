@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{ToTokens, quote, quote_spanned};
 use sql_bridge::{Ast, MySqlDialect, PostgreSqlDialect, SQLiteDialect, ToQuery};
 use syn::{
-    parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned, 
-    Expr, Ident, ImplItem, ItemImpl, Lit, ExprLit, Path, 
-    PathArguments, ReturnType, Signature, Token, Type, TypeParam
+    Expr, ExprLit, Ident, ImplItem, ItemImpl, Lit, Path, PathArguments, ReturnType, Signature,
+    Token, Type, TypeParam, parse_quote, parse_quote_spanned, punctuated::Punctuated,
+    spanned::Spanned,
 };
 
 fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
@@ -151,7 +151,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs: proc_macro2::TokenStream = attrs.into();
     let mut input: syn::Item = syn::parse(input).unwrap();
-    
+
     match input {
         syn::Item::Impl(ref mut i) => {
             // macro will inject own generic bounds, where clause and type for DatabaseRepository
@@ -183,11 +183,10 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     None
                 }
             }).collect::<Vec<&Signature>>();
-            
             let private_module = quote!{
                 use macros::query;
                 use super::*;
-                
+
                 pub trait SqlxDBNum {
                     fn pos() -> usize {
                         usize::MAX
@@ -218,7 +217,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
                 impl<D: SqlxDBNum> Query<D> {
                     pub fn query(options: &'static [&'static str]) -> &'static str {
-                        options[D::pos()]                            
+                        options[D::pos()]
                     }
                 }
 
@@ -231,14 +230,14 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
             let db_repo_decl = input.to_token_stream();
 
-            quote_spanned! { 
-                input.span() => 
+            quote_spanned! {
+                input.span() =>
                 mod __private {
                     #private_module
 
                     #db_repo_decl
                 }
-                use __private::#trait_name; 
+                use __private::#trait_name;
             }
         }
         _ => quote! {
@@ -250,7 +249,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
 
 fn asts_to_query(
     ast: &[Ast],
-    dialect: &dyn ToQuery
+    dialect: &dyn ToQuery,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let queries = ast
         .iter()
@@ -264,7 +263,9 @@ fn asts_to_query(
 pub fn query(input: TokenStream) -> TokenStream {
     let input: syn::Expr = syn::parse(input).expect("expected expression");
     match input {
-        Expr::Lit(ExprLit{lit: Lit::Str(lit), ..})=> {
+        Expr::Lit(ExprLit {
+            lit: Lit::Str(lit), ..
+        }) => {
             let query = lit.value();
             let ast_list = match sql_bridge::Ast::parse(&query) {
                 Ok(ast) => ast,
@@ -272,11 +273,13 @@ pub fn query(input: TokenStream) -> TokenStream {
                     let err = format!("failed to parse query: {e}");
                     return quote_spanned! {
                         lit.span() => compile_error!(#err)
-                    }.into()
+                    }
+                    .into();
                 }
             };
             let ast_list = ast_list.as_slice();
-            let dialects: &[&dyn ToQuery] = &[&PostgreSqlDialect{}, &SQLiteDialect{}, &MySqlDialect{}];
+            let dialects: &[&dyn ToQuery] =
+                &[&PostgreSqlDialect {}, &SQLiteDialect {}, &MySqlDialect {}];
             let query_list = match dialects
                 .into_iter()
                 .map(|dialect| asts_to_query(ast_list, *dialect))
@@ -287,13 +290,14 @@ pub fn query(input: TokenStream) -> TokenStream {
                     let err = format!("failed to build queries list: {e}");
                     return quote_spanned! {
                         lit.span() => compile_error!(#err)
-                    }.into()
+                    }
+                    .into();
                 }
             };
             let postgres_query = &query_list[0];
             let sqlite_query = &query_list[1];
             let mysql_query = &query_list[2];
-            quote_spanned! { 
+            quote_spanned! {
                 lit.span() => {
                     static QUERIES: [&'static str; 3] = [
                         #postgres_query,
@@ -302,12 +306,9 @@ pub fn query(input: TokenStream) -> TokenStream {
                     ];
                     __private::Query::<D>::query(QUERIES.as_slice())
                 }
-            }.into()
-        },
-        _ => {
-            return quote!{
-                compile_error!("expected string");
-            }.into()
+            }
+            .into()
         }
+        _ => quote! { compile_error!("expected string"); }.into(),
     }
 }
