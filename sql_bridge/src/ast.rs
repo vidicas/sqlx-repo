@@ -491,6 +491,7 @@ pub enum Projection {
     Identifier(String),
     Function(Function),
     NumericLiteral(String),
+    String(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1208,6 +1209,7 @@ impl Ast {
                     }
                     SelectItem::UnnamedExpr(Expr::Value(value)) => match &value.value {
                         Value::Number(value, _) => Ok(Projection::NumericLiteral(value.clone())),
+                        Value::SingleQuotedString(value) => Ok(Projection::String(value.clone())),
                         value => Err("Unsupported value type in projection: {value:?}")?,
                     },
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
@@ -1541,7 +1543,7 @@ impl Ast {
 
     fn create_table_to_sql(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         if_not_exists: bool,
         name: &str,
         columns: &[Column],
@@ -1551,9 +1553,9 @@ impl Ast {
         if if_not_exists {
             buf.write_all(b"IF NOT EXISTS ")?;
         }
-        Self::write_quoted(dialect, &mut buf, name)?;
+        Self::write_quoted(dialect, buf, name)?;
         buf.write_all(b" (\n")?;
-        Self::table_columns_to_sql(dialect, &mut buf, columns, "\n")?;
+        Self::table_columns_to_sql(dialect, buf, columns, "\n")?;
         if constraints.len() > 0 {
             buf.write_all(b",\n")?;
         }
@@ -1562,7 +1564,7 @@ impl Ast {
                 Constraint::PrimaryKey(fields) => {
                     buf.write_all(b"PRIMARY KEY (")?;
                     for (pos, field) in fields.iter().enumerate() {
-                        Self::write_quoted(dialect, &mut buf, field)?;
+                        Self::write_quoted(dialect, buf, field)?;
                         if pos != fields.len() - 1 {
                             buf.write_all(b", ")?;
                         }
@@ -1576,7 +1578,7 @@ impl Ast {
                 } => {
                     buf.write_all(b"FOREIGN KEY (")?;
                     for (pos, column) in columns.iter().enumerate() {
-                        Self::write_quoted(dialect, &mut buf, column)?;
+                        Self::write_quoted(dialect, buf, column)?;
                         if pos != columns.len() - 1 {
                             buf.write_all(b", ")?;
                         }
@@ -1585,7 +1587,7 @@ impl Ast {
                     buf.write_all(foreign_table.as_bytes());
                     buf.write_all(b"(")?;
                     for (pos, column) in referred_columns.iter().enumerate() {
-                        Self::write_quoted(dialect, &mut buf, column)?;
+                        Self::write_quoted(dialect, buf, column)?;
                         if pos != columns.len() - 1 {
                             buf.write_all(b", ")?;
                         }
@@ -1603,15 +1605,15 @@ impl Ast {
 
     fn table_columns_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         columns: &[Column],
         separator: &str,
     ) -> Result<()> {
         for (pos, column) in columns.iter().enumerate() {
-            Self::write_quoted(dialect, &mut *buf, &column.name)?;
+            Self::write_quoted(dialect, buf, &column.name)?;
             buf.write_all(b" ")?;
 
-            dialect.emit_column_spec(column, &mut *buf)?;
+            dialect.emit_column_spec(column, buf)?;
             if pos != columns.len() - 1 {
                 buf.write_all(b",")?;
                 buf.write_all(separator.as_bytes())?;
@@ -1622,7 +1624,7 @@ impl Ast {
 
     fn create_index_to_sql(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         unique: bool,
         name: &str,
         table: &str,
@@ -1633,12 +1635,12 @@ impl Ast {
         } else {
             buf.write_all(b"CREATE INDEX ")?;
         }
-        Self::write_quoted(dialect, &mut buf, name)?;
+        Self::write_quoted(dialect, buf, name)?;
         buf.write_all(b" ON ")?;
-        Self::write_quoted(dialect, &mut buf, table)?;
+        Self::write_quoted(dialect, buf, table)?;
         buf.write_all(b" (")?;
         for (pos, column) in columns.iter().enumerate() {
-            Self::write_quoted(dialect, &mut buf, column)?;
+            Self::write_quoted(dialect, buf, column)?;
             if pos != columns.len() - 1 {
                 buf.write_all(b", ")?;
             }
@@ -1650,7 +1652,7 @@ impl Ast {
     #[allow(clippy::too_many_arguments)]
     fn select_to_sql(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         distinct: bool,
         projections: &[Projection],
         from: &From,
@@ -1666,17 +1668,18 @@ impl Ast {
             match projection {
                 Projection::WildCard => buf.write_all(b"*")?,
                 Projection::Identifier(ident) => {
-                    Self::write_quoted(dialect, &mut buf, ident)?;
+                    Self::write_quoted(dialect, buf, ident)?;
                 }
                 Projection::Function(function) => match function {
                     Function::Count(FunctionArg::Wildcard) => buf.write_all(b"COUNT(*)")?,
                     Function::Count(FunctionArg::Ident(ident)) => {
                         buf.write_all(b"COUNT(")?;
-                        Self::write_quoted(dialect, &mut buf, ident)?;
+                        Self::write_quoted(dialect, buf, ident)?;
                         buf.write_all(b")")?
                     }
                 },
                 Projection::NumericLiteral(value) => buf.write_all(value.as_bytes())?,
+                Projection::String(value) => Self::write_single_quoted(dialect, buf, value)?,
             };
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
@@ -1686,20 +1689,20 @@ impl Ast {
         match from {
             From::Table(name) => {
                 buf.write_all(b" FROM ")?;
-                Self::write_quoted(dialect, &mut buf, name)?
+                Self::write_quoted(dialect, buf, name)?
             }
             From::None => (),
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
-            Self::selection_to_sql(dialect, &mut buf, selection)?;
+            Self::selection_to_sql(dialect, buf, selection)?;
         };
 
         if !group_by.is_empty() {
             buf.write_all(b" GROUP BY (")?;
             for (pos, parameter) in group_by.iter().enumerate() {
                 match parameter {
-                    GroupByParameter::Ident(ident) => Self::write_quoted(dialect, &mut buf, ident)?,
+                    GroupByParameter::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
                 }
                 if pos != group_by.len() - 1 {
                     buf.write_all(b", ")?;
@@ -1710,7 +1713,7 @@ impl Ast {
         if !order_by.is_empty() {
             buf.write_all(b" ORDER BY ")?;
             for (pos, order_option) in order_by.iter().enumerate() {
-                Self::write_quoted(dialect, &mut buf, order_option.ident.as_str())?;
+                Self::write_quoted(dialect, buf, order_option.ident.as_str())?;
                 match &order_option.option {
                     OrderOption::Asc => buf.write_all(b" ASC")?,
                     OrderOption::Desc => buf.write_all(b" DESC")?,
@@ -1726,19 +1729,19 @@ impl Ast {
 
     fn insert_source_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         insert_source: &InsertSource,
         place_holder_num: usize,
     ) -> Result<()> {
         match insert_source {
             InsertSource::Null => buf.write_all(b"NULL")?,
             InsertSource::Number(num) => buf.write_all(num.as_bytes())?,
-            InsertSource::String(string) => Self::write_single_quoted(dialect, &mut *buf, string)?,
+            InsertSource::String(string) => Self::write_single_quoted(dialect, buf, string)?,
             InsertSource::PlaceHolder => {
                 buf.write_all(dialect.placeholder(place_holder_num).as_bytes())?;
             }
             InsertSource::Cast { cast, source } => {
-                Self::insert_source_to_sql(dialect, &mut *buf, source, place_holder_num)?;
+                Self::insert_source_to_sql(dialect, buf, source, place_holder_num)?;
                 if dialect.placeholder_supports_cast() {
                     buf.write_all(b"::")?;
                     buf.write_all(cast.as_bytes())?;
@@ -1750,20 +1753,20 @@ impl Ast {
 
     fn insert_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         table: &str,
         columns: &[String],
         values: &[Vec<InsertSource>],
     ) -> Result<()> {
         buf.write_all(b"INSERT INTO ")?;
-        Self::write_quoted(dialect, &mut *buf, table)?;
+        Self::write_quoted(dialect, buf, table)?;
         if !columns.is_empty() {
             buf.write_all(b"(")?;
             for (pos, column) in columns.iter().enumerate() {
                 if pos != 0 {
                     buf.write_all(b", ")?;
                 }
-                Self::write_quoted(dialect, &mut *buf, column)?;
+                Self::write_quoted(dialect, buf, column)?;
             }
             buf.write_all(b")")?;
         }
@@ -1779,7 +1782,7 @@ impl Ast {
                 }
                 Self::insert_source_to_sql(
                     dialect,
-                    &mut *buf,
+                    buf,
                     insert_source,
                     row_pos * row.len() + col_pos + 1,
                 )?;
@@ -1791,7 +1794,7 @@ impl Ast {
 
     fn selection_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         selection: &Selection,
     ) -> Result<()> {
         match selection {
@@ -1816,25 +1819,23 @@ impl Ast {
 
     fn update_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         table: &str,
         assignments: &[UpdateAssignment],
         selection: Option<&Selection>,
     ) -> Result<()> {
         buf.write_all(b"UPDATE ")?;
-        Self::write_quoted(dialect, &mut *buf, table)?;
+        Self::write_quoted(dialect, buf, table)?;
         buf.write_all(b" SET ")?;
         for (pos, assignment) in assignments.iter().enumerate() {
             if pos != 0 {
                 buf.write_all(b", ")?;
             }
-            Self::write_quoted(dialect, &mut *buf, assignment.target.as_bytes())?;
+            Self::write_quoted(dialect, buf, assignment.target.as_bytes())?;
             buf.write_all(b"=")?;
             match &assignment.value {
                 UpdateValue::Null => buf.write_all(b"NULL")?,
-                UpdateValue::String(string) => {
-                    Self::write_single_quoted(dialect, &mut *buf, string)?
-                }
+                UpdateValue::String(string) => Self::write_single_quoted(dialect, buf, string)?,
                 UpdateValue::Number(number) => buf.write_all(number.as_bytes())?,
                 UpdateValue::PlaceHolder => {
                     buf.write_all(dialect.placeholder(pos + 1).as_bytes())?
@@ -1843,32 +1844,32 @@ impl Ast {
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
-            Self::selection_to_sql(dialect, &mut *buf, selection)?;
+            Self::selection_to_sql(dialect, buf, selection)?;
         };
         Ok(())
     }
 
     fn delete_to_sql(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         from: &From,
         selection: Option<&Selection>,
     ) -> Result<()> {
         buf.write_all(b"DELETE FROM ")?;
         match from {
-            From::Table(name) => Self::write_quoted(dialect, &mut *buf, name)?,
+            From::Table(name) => Self::write_quoted(dialect, buf, name)?,
             From::None => (),
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
-            Self::selection_to_sql(dialect, &mut *buf, selection)?;
+            Self::selection_to_sql(dialect, buf, selection)?;
         };
         Ok(())
     }
 
     fn drop_to_sql(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         object_type: DropObjectType,
         if_exists: bool,
         name: &str,
@@ -1881,7 +1882,7 @@ impl Ast {
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
         }
-        Self::write_quoted(dialect, &mut buf, name);
+        Self::write_quoted(dialect, buf, name);
         match (
             object_type == DropObjectType::Index,
             dialect.drop_index_requires_table(),
@@ -1889,7 +1890,7 @@ impl Ast {
         ) {
             (true, true, Some(table)) => {
                 buf.write_all(b" ON ")?;
-                Self::write_quoted(dialect, &mut buf, table)?;
+                Self::write_quoted(dialect, buf, table)?;
             }
             (true, _, None) => Err("`DROP INDEX` requires table name")?,
             _ => (),
@@ -1899,7 +1900,7 @@ impl Ast {
 
     fn write_quoted(
         dialect: &dyn ToQuery,
-        buf: &mut impl Write,
+        buf: &mut dyn Write,
         input: impl AsRef<[u8]>,
     ) -> Result<()> {
         buf.write_all(dialect.quote())?;
@@ -1910,7 +1911,7 @@ impl Ast {
 
     fn write_single_quoted(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         input: impl AsRef<[u8]>,
     ) -> Result<()> {
         buf.write_all(b"'")?;
@@ -1921,61 +1922,56 @@ impl Ast {
 
     fn alter_table_to_sql(
         dialect: &dyn ToQuery,
-        mut buf: impl Write,
+        buf: &mut dyn Write,
         table_name: &str,
         operation: &AlterTableOperation,
     ) -> Result<()> {
         buf.write_all(b"ALTER TABLE ")?;
-        Self::write_quoted(dialect, &mut buf, table_name)?;
+        Self::write_quoted(dialect, buf, table_name)?;
         match operation {
             AlterTableOperation::AddColumn { column } => {
                 buf.write_all(b" ADD COLUMN ")?;
                 let columns: &[Column] = slice::from_ref(column);
-                Self::table_columns_to_sql(dialect, &mut buf, columns, "")?;
+                Self::table_columns_to_sql(dialect, buf, columns, "")?;
             }
             AlterTableOperation::RenameColumn { from, to } => {
                 buf.write_all(b" RENAME COLUMN ")?;
-                Self::write_quoted(dialect, &mut buf, from)?;
+                Self::write_quoted(dialect, buf, from)?;
                 buf.write_all(b" TO ")?;
-                Self::write_quoted(dialect, &mut buf, to)?;
+                Self::write_quoted(dialect, buf, to)?;
             }
             AlterTableOperation::DropColumn { name } => {
                 buf.write_all(b" DROP COLUMN ")?;
-                Self::write_quoted(dialect, &mut buf, name)?;
+                Self::write_quoted(dialect, buf, name)?;
             }
             AlterTableOperation::RenameTable { to } => {
                 buf.write_all(b" RENAME TO ")?;
-                Self::write_quoted(dialect, &mut buf, to)?;
+                Self::write_quoted(dialect, buf, to)?;
             }
         }
         Ok(())
     }
 
     pub fn to_sql(&self, dialect: &dyn ToQuery) -> Result<String> {
-        let mut buf = Cursor::new(Vec::with_capacity(1024));
+        let buf = &mut Cursor::new(Vec::with_capacity(1024));
         match self {
             Ast::CreateTable {
                 if_not_exists,
                 name,
                 columns,
                 constraints,
-            } => Self::create_table_to_sql(
-                dialect,
-                &mut buf,
-                *if_not_exists,
-                name,
-                columns,
-                constraints,
-            )?,
+            } => {
+                Self::create_table_to_sql(dialect, buf, *if_not_exists, name, columns, constraints)?
+            }
             Ast::AlterTable { name, operation } => {
-                Self::alter_table_to_sql(dialect, &mut buf, name.as_str(), operation)?
+                Self::alter_table_to_sql(dialect, buf, name.as_str(), operation)?
             }
             Ast::CreateIndex {
                 unique,
                 name,
                 table,
                 columns,
-            } => Self::create_index_to_sql(dialect, &mut buf, *unique, name, table, columns)?,
+            } => Self::create_index_to_sql(dialect, buf, *unique, name, table, columns)?,
             Ast::Select {
                 distinct,
                 projections,
@@ -1985,7 +1981,7 @@ impl Ast {
                 order_by,
             } => Self::select_to_sql(
                 dialect,
-                &mut buf,
+                buf,
                 *distinct,
                 projections,
                 from,
@@ -1999,7 +1995,7 @@ impl Ast {
                 source,
             } => Self::insert_to_sql(
                 dialect,
-                &mut buf,
+                buf,
                 table.as_str(),
                 columns.as_slice(),
                 source.as_slice(),
@@ -2010,13 +2006,13 @@ impl Ast {
                 selection,
             } => Self::update_to_sql(
                 dialect,
-                &mut buf,
+                buf,
                 table.as_str(),
                 assignments.as_slice(),
                 selection.as_ref(),
             )?,
             Ast::Delete { from, selection } => {
-                Self::delete_to_sql(dialect, &mut buf, from, selection.as_ref())?
+                Self::delete_to_sql(dialect, buf, from, selection.as_ref())?
             }
             Ast::Drop {
                 object_type,
@@ -2025,13 +2021,14 @@ impl Ast {
                 table,
             } => Self::drop_to_sql(
                 dialect,
-                &mut buf,
+                buf,
                 *object_type,
                 *if_exists,
                 name,
                 table.as_ref().map(AsRef::as_ref),
             )?,
         };
+        let buf = std::mem::replace(buf, Cursor::new(Vec::new()));
         Ok(String::from_utf8(buf.into_inner())?)
     }
 }
