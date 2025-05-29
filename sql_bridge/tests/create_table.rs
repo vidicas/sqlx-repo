@@ -250,3 +250,52 @@ fn test_composite_primary_key() {
         "CREATE TABLE \"foo_baz\" (\n\"l\" INT,\n\"r\" INT,\n\"value\" TEXT,\nPRIMARY KEY (\"l\", \"r\")\n)"
     );
 }
+
+#[test]
+fn test_foreign_key() {
+    let input = r#"CREATE TABLE employees (
+        emp_id INT PRIMARY KEY,
+        dept_id INT,
+        location_id INT,
+        name TEXT,
+        FOREIGN KEY (dept_id, location_id)
+            REFERENCES departments(dept_id, location_id)
+    )"#;
+
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INT PRIMARY KEY,
+`dept_id` INT,
+`location_id` INT,
+`name` TEXT,
+FOREIGN KEY (`dept_id`, `location_id`) REFERENCES departments(`dept_id`, `location_id`)
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INTEGER PRIMARY KEY,
+`dept_id` INTEGER,
+`location_id` INTEGER,
+`name` TEXT,
+FOREIGN KEY (`dept_id`, `location_id`) REFERENCES departments(`dept_id`, `location_id`)
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        r#"CREATE TABLE "employees" (
+"emp_id" INT PRIMARY KEY,
+"dept_id" INT,
+"location_id" INT,
+"name" TEXT,
+FOREIGN KEY ("dept_id", "location_id") REFERENCES departments("dept_id", "location_id")
+)"#
+    );
+}
