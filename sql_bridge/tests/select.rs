@@ -155,3 +155,15 @@ fn select_literal_constant_number() {
     assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "SELECT 1");
     assert_eq!(ast.to_sql(&PostgreSqlDialect {}).unwrap(), "SELECT 1");
 }
+
+#[test]
+fn select_literal_constant_string() {
+    let input = "select '1'";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "SELECT '1'");
+    assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "SELECT '1'");
+    assert_eq!(ast.to_sql(&PostgreSqlDialect {}).unwrap(), "SELECT '1'");
+}
