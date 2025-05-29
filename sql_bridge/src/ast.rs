@@ -16,7 +16,7 @@ use sqlparser::{
         Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
         ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem, SetExpr,
         SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
-        UpdateTableFromKind, Value,
+        UpdateTableFromKind, Value, ValueWithSpan,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -490,6 +490,7 @@ pub enum Projection {
     WildCard,
     Identifier(String),
     Function(Function),
+    NumericLiteral(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -681,6 +682,7 @@ impl TryFrom<&BinaryOperator> for Op {
 #[derive(Debug, Clone, PartialEq)]
 pub enum From {
     Table(String),
+    None,
 }
 
 impl TryFrom<&[TableWithJoins]> for From {
@@ -695,12 +697,13 @@ impl TryFrom<&[TableWithJoins]> for From {
                     ..
                 },
             ] if joins.is_empty() => match relation {
-                TableFactor::Table { name, .. } => Ast::parse_object_name(name)?,
+                TableFactor::Table { name, .. } => From::Table(Ast::parse_object_name(name)?),
                 other => Err(format!("unsupported table factor: {other:?}"))?,
             },
+            &[] => From::None,
             other => Err(format!("joins are not supported yet: {tables:?}"))?,
         };
-        Ok(From::Table(from))
+        Ok(from)
     }
 }
 
@@ -1203,6 +1206,10 @@ impl Ast {
                             name => Err(format!("unsupported function '{name}'"))?,
                         }
                     }
+                    SelectItem::UnnamedExpr(Expr::Value(value)) => match &value.value {
+                        Value::Number(value, _) => Ok(Projection::NumericLiteral(value.clone())),
+                        value => Err("Unsupported value type in projection: {value:?}")?,
+                    },
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
             })
@@ -1669,15 +1676,19 @@ impl Ast {
                         buf.write_all(b")")?
                     }
                 },
+                Projection::NumericLiteral(value) => buf.write_all(value.as_bytes())?,
             };
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
             }
         }
-        buf.write_all(b" FROM ")?;
 
         match from {
-            From::Table(name) => Self::write_quoted(dialect, &mut buf, name)?,
+            From::Table(name) => {
+                buf.write_all(b" FROM ")?;
+                Self::write_quoted(dialect, &mut buf, name)?
+            }
+            From::None => (),
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -1846,6 +1857,7 @@ impl Ast {
         buf.write_all(b"DELETE FROM ")?;
         match from {
             From::Table(name) => Self::write_quoted(dialect, &mut *buf, name)?,
+            From::None => (),
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;

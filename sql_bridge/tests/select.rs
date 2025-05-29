@@ -143,3 +143,15 @@ fn test_query_with_order_by() {
         "SELECT * FROM \"test\" ORDER BY \"id\" ASC, \"key\" DESC"
     );
 }
+
+#[test]
+fn select_literal_constant_number() {
+    let input = "select 1";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "SELECT 1");
+    assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "SELECT 1");
+    assert_eq!(ast.to_sql(&PostgreSqlDialect {}).unwrap(), "SELECT 1");
+}
