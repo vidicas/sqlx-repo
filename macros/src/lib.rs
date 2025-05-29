@@ -216,7 +216,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
 
                 impl<D: SqlxDBNum> Query<D> {
-                    pub fn query(options: &'static [&'static str]) -> &'static str {
+                    pub fn query(options: &[&'static str]) -> &'static str {
                         options[D::pos()]
                     }
                 }
@@ -267,7 +267,7 @@ pub fn query(input: TokenStream) -> TokenStream {
             lit: Lit::Str(lit), ..
         }) => {
             let query = lit.value();
-            let ast_list = match sql_bridge::Ast::parse(&query) {
+            let ast_list = match sql_bridge::Ast::parse(query.as_str()) {
                 Ok(ast) => ast,
                 Err(e) => {
                     let err = format!("failed to parse query: {e}");
@@ -299,7 +299,7 @@ pub fn query(input: TokenStream) -> TokenStream {
             let mysql_query = &query_list[2];
             quote_spanned! {
                 lit.span() => {
-                    static QUERIES: [&'static str; 3] = [
+                    static QUERIES: [&str; 3] = [
                         #postgres_query,
                         #sqlite_query,
                         #mysql_query
