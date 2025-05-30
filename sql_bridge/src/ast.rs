@@ -1553,9 +1553,6 @@ impl Ast {
                     )?,
                     Statement::CreateIndex(index) => Self::parse_create_index(index)?,
                     Statement::Query(query) => Self::parse_query(query)?,
-                    Statement::AlterIndex { name, operation } => {
-                        unimplemented!()
-                    }
                     Statement::Drop {
                         object_type,
                         if_exists,
