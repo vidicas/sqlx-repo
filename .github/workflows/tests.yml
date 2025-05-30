@@ -1,0 +1,16 @@
+name: tests
+
+on: [push, pull_request]
+
+
+jobs:
+  test:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: test
+      - run: cargo test --all-features
+      
