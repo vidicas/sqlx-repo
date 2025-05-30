@@ -695,10 +695,59 @@ impl TryFrom<&[TableWithJoins]> for From {
                 TableWithJoins {
                     ref relation,
                     ref joins,
-                    ..
                 },
             ] if joins.is_empty() => match relation {
-                TableFactor::Table { name, .. } => From::Table(Ast::parse_object_name(name)?),
+                TableFactor::Table {
+                    name,
+                    alias,
+                    args,
+                    with_hints,
+                    version,
+                    with_ordinality,
+                    partitions,
+                    json_path,
+                    sample,
+                    index_hints,
+                } => {
+                    if alias.is_some() {
+                        Err("alias is not supported in table factor 'table'")?
+                    }
+                    // Postgre + MSSQL
+                    if args.is_some() {
+                        Err(
+                            "arguments of a table-valued function are not supported in table factor 'table'",
+                        )?
+                    }
+                    //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
+                    if !with_hints.is_empty() {
+                        Err("with hints are not supported in table factor 'table'")?
+                    }
+                    // Table time-travel, as supported by BigQuery and MSSQL.
+                    if version.is_some() {
+                        Err("version is not supported in table factor 'table'")?
+                    }
+                    // Postgres.
+                    if *with_ordinality {
+                        Err("with ordinality is not supported in table factor 'table'")?
+                    }
+                    // Mysql
+                    if !partitions.is_empty() {
+                        Err("partitions are not supported in table factor 'table'")?
+                    }
+                    // Optional PartiQL JsonPath
+                    if json_path.is_some() {
+                        Err("json path is not supported in table factor 'table'")?
+                    }
+                    // Optional table sample modifier
+                    if sample.is_some() {
+                        Err("sample is not supported in table factor 'table'")?
+                    }
+                    // Optional index hints (mysql)
+                    if !index_hints.is_empty() {
+                        Err("index hints are not supported in table factor 'table'")?
+                    }
+                    From::Table(Ast::parse_object_name(name)?)
+                }
                 other => Err(format!("unsupported table factor: {other:?}"))?,
             },
             &[] => From::None,
