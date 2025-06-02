@@ -151,6 +151,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs: proc_macro2::TokenStream = attrs.into();
     let mut input: syn::Item = syn::parse(input).unwrap();
+    let input_span = input.span();
 
     match input {
         syn::Item::Impl(ref mut i) => {
@@ -183,11 +184,11 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     None
                 }
             }).collect::<Vec<&Signature>>();
-            let private_module = quote!{
+            let private_impl = quote!{
                 use macros::query;
                 use super::*;
 
-                pub trait SqlxDBNum {
+                trait SqlxDBNum {
                     fn pos() -> usize {
                         usize::MAX
                     }
@@ -211,7 +212,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
 
-                pub(crate) struct Query<D: SqlxDBNum> {
+                struct Query<D: SqlxDBNum> {
                     _marker: std::marker::PhantomData<D>,
                 }
 
@@ -221,23 +222,23 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
 
+                #database_constructor
+            };
+            let repo_trait = quote_spanned! {
+                input_span =>
                 pub trait #trait_name: #attrs {
                     #(#trait_func_sigs;)*
                 }
-
-                #database_constructor
             };
-
             let db_repo_decl = input.to_token_stream();
-
             quote_spanned! {
-                input.span() =>
+                input_span =>
+                #[doc(hidden)]
                 mod __private {
-                    #private_module
-
                     #db_repo_decl
+                    #private_impl
                 }
-                use __private::#trait_name;
+                #repo_trait
             }
         }
         _ => quote! {
