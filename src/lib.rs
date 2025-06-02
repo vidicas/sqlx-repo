@@ -1,6 +1,6 @@
 mod migrator;
 
-pub struct DatabaseRepository<D = sqlx::Sqlite>
+pub struct DatabaseRepository<D>
 where
     D: sqlx::Database,
 {

@@ -8,14 +8,6 @@ impl Repo for DatabaseRepository {
         println!("query: {}", query);
         Ok(())
     }
-
-    async fn test(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn t(&self) -> Result<()> {
-        Ok(())
-    }
 }
 
 // basic smoke test

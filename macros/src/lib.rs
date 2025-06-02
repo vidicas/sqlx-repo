@@ -59,7 +59,7 @@ fn impl_dyn_repo(trait_name: &Path) -> proc_macro2::TokenStream {
 /// - Preserver original spans
 fn setup_generics_and_where_clause(input: &mut ItemImpl) {
     let where_clause = parse_quote! {
-        where D: sqlx::Database + __private::SqlxDBNum,
+        where D: sqlx::Database + SqlxDBNum,
         // Types, that Database should support
         for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -80,7 +80,7 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
         usize: sqlx::ColumnIndex<D::Row>,
 
         // sqlx bounds
-        for<'c> &'c mut <D as sqlx::Database>::Connection: sqlx::Executor<'c, Database = D>,
+        for<'e> &'e mut <D as sqlx::Database>::Connection: sqlx::Executor<'e, Database = D>,
         for<'e> &'e sqlx::Pool<D>: sqlx::Executor<'e, Database = D>,
         //for<'q> <D as sqlx::database::HasArguments<'q>>::Arguments: IntoArguments<'q, D>,
         D::QueryResult: std::fmt::Debug,
@@ -189,7 +189,6 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             }).collect::<Vec<&Signature>>();
             let private_impl = quote!{
                 use macros::query;
-                use super::*;
 
                 pub(crate) trait SqlxDBNum {
                     fn pos() -> usize {
@@ -225,10 +224,10 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let db_repo_decl = input.to_token_stream();
             quote_spanned! {
                 input_span =>
-                mod __private {
+                const _:() = {
                     #db_repo_decl
                     #private_impl
-                }
+                };
                 #repo_trait
             }
         }
