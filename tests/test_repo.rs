@@ -13,7 +13,7 @@ impl Repo for DatabaseRepository {
         Ok(())
     }
 
-    async fn f2(&self) -> Result<()> {
+    fn t(&self) -> Result<()> {
         Ok(())
     }
 }

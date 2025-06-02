@@ -7,7 +7,7 @@ use syn::{
     spanned::Spanned,
 };
 
-fn get_database_constructor(trait_name: &Path) -> proc_macro2::TokenStream {
+fn impl_dyn_repo(trait_name: &Path) -> proc_macro2::TokenStream {
     quote! {
         impl dyn #trait_name {
             pub async fn new(database_url: &str) ->
@@ -150,7 +150,10 @@ fn setup_generics_and_where_clause(input: &mut ItemImpl) {
 #[proc_macro_attribute]
 pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
     let attrs: proc_macro2::TokenStream = attrs.into();
-    let mut input: syn::Item = syn::parse(input).unwrap();
+    let mut input: syn::Item = match syn::parse(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error().into(),
+    };
     let input_span = input.span();
 
     match input {
@@ -176,7 +179,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             };
             // rewrite impl block
             setup_generics_and_where_clause(i);
-            let database_constructor = get_database_constructor(&trait_name);
+            let database_constructor = impl_dyn_repo(&trait_name);
             let trait_func_sigs = i.items.iter().filter_map(|func| {
                 if let ImplItem::Fn(f) = func {
                     Some(&f.sig)
@@ -188,7 +191,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 use macros::query;
                 use super::*;
 
-                trait SqlxDBNum {
+                pub(crate) trait SqlxDBNum {
                     fn pos() -> usize {
                         usize::MAX
                     }
@@ -212,20 +215,9 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
 
-                struct Query<D: SqlxDBNum> {
-                    _marker: std::marker::PhantomData<D>,
-                }
-
-                impl<D: SqlxDBNum> Query<D> {
-                    pub fn query(options: &[&'static str]) -> &'static str {
-                        options[D::pos()]
-                    }
-                }
-
                 #database_constructor
             };
-            let repo_trait = quote_spanned! {
-                input_span =>
+            let repo_trait = quote! {
                 pub trait #trait_name: #attrs {
                     #(#trait_func_sigs;)*
                 }
@@ -233,7 +225,6 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             let db_repo_decl = input.to_token_stream();
             quote_spanned! {
                 input_span =>
-                #[doc(hidden)]
                 mod __private {
                     #db_repo_decl
                     #private_impl
@@ -241,7 +232,8 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 #repo_trait
             }
         }
-        _ => quote! {
+        other => quote_spanned! {
+            other.span() =>
             compile_error!("works only for 'impl Trait for DatabaseRepository'");
         },
     }
@@ -305,7 +297,7 @@ pub fn query(input: TokenStream) -> TokenStream {
                         #sqlite_query,
                         #mysql_query
                     ];
-                    __private::Query::<D>::query(QUERIES.as_slice())
+                    QUERIES[<D as SqlxDBNum>::pos()]
                 }
             }
             .into()
