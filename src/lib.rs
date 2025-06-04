@@ -1,4 +1,6 @@
-pub struct DatabaseRepository<D = sqlx::Sqlite>
+mod migrator;
+
+pub struct DatabaseRepository<D>
 where
     D: sqlx::Database,
 {
@@ -39,8 +41,46 @@ impl<D: sqlx::Database> DatabaseRepository<D> {
     }
 }
 
+pub trait SqlxDBNum {
+    fn pos() -> usize {
+        usize::MAX
+    }
+}
+
+impl SqlxDBNum for sqlx::Postgres {
+    fn pos() -> usize {
+        0
+    }
+}
+
+impl SqlxDBNum for sqlx::Sqlite {
+    fn pos() -> usize {
+        1
+    }
+}
+
+impl SqlxDBNum for sqlx::MySql {
+    fn pos() -> usize {
+        2
+    }
+}
+
+#[macro_export]
+macro_rules! migration {
+    ($name:expr, $migration:expr) => {
+        ::sqlx_db_repo::prelude::Migration {
+            name: $name,
+            queries: ::macros::gen_query!($migration),
+        }
+    };
+}
+
 pub mod prelude {
-    pub use super::DatabaseRepository;
+    pub use super::{
+        migration,
+        migrator::{Migration, Migrator},
+        DatabaseRepository, SqlxDBNum,
+    };
     pub use chrono;
     pub use futures;
     pub use macros::repo;

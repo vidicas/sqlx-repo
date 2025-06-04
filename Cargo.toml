@@ -13,5 +13,5 @@ url = "2"
 uuid = "1"
 
 [dev-dependencies]
-anyhow = "1.0.98"
-tokio = { version = "1.44", features = ["full"] }
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
