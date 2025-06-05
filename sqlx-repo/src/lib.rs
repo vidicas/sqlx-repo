@@ -83,7 +83,7 @@ pub mod prelude {
     };
     pub use chrono;
     pub use futures;
-    pub use macros::repo;
+    pub use sqlx_repo_macros::repo;
     pub use serde_json;
     pub use sqlx::{self, Row as _};
     pub use url;

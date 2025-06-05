@@ -234,7 +234,7 @@ pub fn query(input: TokenStream) -> TokenStream {
             lit: Lit::Str(lit), ..
         }) => {
             let query = lit.value();
-            let ast_list = match sql_bridge::Ast::parse(query.as_str()) {
+            let ast_list = match Ast::parse(query.as_str()) {
                 Ok(ast) => ast,
                 Err(e) => {
                     let err = format!("failed to parse query: {e}");

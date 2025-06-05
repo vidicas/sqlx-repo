@@ -1,1 +1,1 @@
-# `sqlx-db-repo`
+# `sqlx-repo`
