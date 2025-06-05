@@ -2,9 +2,9 @@ use proc_macro::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
 use sql_bridge::{Ast, MySqlDialect, PostgreSqlDialect, SQLiteDialect, ToQuery};
 use syn::{
-    Expr, ExprLit, Ident, ImplItem, ItemImpl, Lit, LitStr, Path, PathArguments,
-    ReturnType, Signature, Token, Type, TypeParam, parse_quote, parse_quote_spanned,
-    punctuated::Punctuated, spanned::Spanned,
+    Expr, ExprLit, Ident, ImplItem, ItemImpl, Lit, LitStr, Path, PathArguments, ReturnType,
+    Signature, Token, Type, TypeParam, parse_quote, parse_quote_spanned, punctuated::Punctuated,
+    spanned::Spanned,
 };
 
 fn impl_dyn_repo(trait_name: &Path) -> proc_macro2::TokenStream {
@@ -59,7 +59,7 @@ fn impl_dyn_repo(trait_name: &Path) -> proc_macro2::TokenStream {
 /// - Preserver original spans
 fn setup_generics_and_where_clause(input: &mut ItemImpl) {
     let where_clause = parse_quote! {
-        where D: sqlx::Database + ::sqlx_db_repo::SqlxDBNum,
+        where D: sqlx::Database + ::sqlx_repo::SqlxDBNum,
         // Types, that Database should support
         for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
         for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -188,7 +188,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }).collect::<Vec<&Signature>>();
             let private_impl = quote!{
-                use macros::query;
+                use sqlx_repo_macros::query;
                 #database_constructor
             };
             let repo_trait = quote! {
@@ -248,7 +248,7 @@ pub fn query(input: TokenStream) -> TokenStream {
             let dialects: &[&dyn ToQuery] =
                 &[&PostgreSqlDialect {}, &SQLiteDialect {}, &MySqlDialect {}];
             let query_list = match dialects
-                .into_iter()
+                .iter()
                 .map(|dialect| asts_to_query(ast_list, *dialect))
                 .collect::<Result<Vec<_>, _>>()
             {
@@ -285,7 +285,7 @@ fn get_literal(input: &syn::Expr) -> Result<&LitStr, TokenStream> {
         Expr::Lit(ExprLit {
             lit: Lit::Str(lit), ..
         }) => Ok(lit),
-        Expr::Group(group) => return get_literal(&group.expr),
+        Expr::Group(group) => get_literal(&group.expr),
         u => {
             let compile_error = format!("expected string, got: {u:#?}");
             Err(quote! { compile_error!(#compile_error); }.into())
@@ -298,7 +298,7 @@ pub fn gen_query(input: TokenStream) -> TokenStream {
     let input: syn::Expr = syn::parse(input).expect("expected expression");
     let lit = match get_literal(&input) {
         Ok(lit) => lit,
-        Err(token_stream) => return token_stream.into(),
+        Err(token_stream) => return token_stream,
     };
     let query = lit.value();
     let ast_list = match sql_bridge::Ast::parse(query.as_str()) {
@@ -314,7 +314,7 @@ pub fn gen_query(input: TokenStream) -> TokenStream {
     let ast_list = ast_list.as_slice();
     let dialects: &[&dyn ToQuery] = &[&PostgreSqlDialect {}, &SQLiteDialect {}, &MySqlDialect {}];
     let query_list = match dialects
-        .into_iter()
+        .iter()
         .map(|dialect| asts_to_query(ast_list, *dialect))
         .collect::<Result<Vec<_>, _>>()
     {

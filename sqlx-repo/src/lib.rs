@@ -68,9 +68,9 @@ impl SqlxDBNum for sqlx::MySql {
 #[macro_export]
 macro_rules! migration {
     ($name:expr, $migration:expr) => {
-        ::sqlx_db_repo::prelude::Migration {
+        ::sqlx_repo::prelude::Migration {
             name: $name,
-            queries: ::macros::gen_query!($migration),
+            queries: ::sqlx_repo_macros::gen_query!($migration),
         }
     };
 }
@@ -83,9 +83,9 @@ pub mod prelude {
     };
     pub use chrono;
     pub use futures;
-    pub use sqlx_repo_macros::repo;
     pub use serde_json;
     pub use sqlx::{self, Row as _};
+    pub use sqlx_repo_macros::repo;
     pub use url;
     pub use uuid;
 }
