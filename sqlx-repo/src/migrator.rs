@@ -5,18 +5,18 @@ use futures::future::BoxFuture;
 use sqlx::migrate::{Migration as SqlxMigration, MigrationSource, MigrationType};
 
 #[derive(Debug)]
-pub struct Migrator<D = sqlx::Sqlite> {
+pub struct RepoMigrationSource<D> {
     migrations: Vec<Migration>,
     marker: PhantomData<D>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Migration {
     pub name: &'static str,
     pub queries: &'static [&'static str],
 }
 
-impl<'a, D: SqlxDBNum + std::fmt::Debug> MigrationSource<'a> for Migrator<D> {
+impl<'a, D: SqlxDBNum + std::fmt::Debug> MigrationSource<'a> for RepoMigrationSource<D> {
     fn resolve(self) -> BoxFuture<'a, Result<Vec<SqlxMigration>, sqlx::error::BoxDynError>> {
         Box::pin(async move {
             let migrations = self.migrations
@@ -36,13 +36,13 @@ impl<'a, D: SqlxDBNum + std::fmt::Debug> MigrationSource<'a> for Migrator<D> {
     }
 }
 
-impl<D: SqlxDBNum + std::fmt::Debug> Default for Migrator<D> {
+impl<D: SqlxDBNum + std::fmt::Debug> Default for RepoMigrationSource<D> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: SqlxDBNum + std::fmt::Debug> Migrator<D> {
+impl<D: SqlxDBNum + std::fmt::Debug> RepoMigrationSource<D> {
     pub fn new() -> Self {
         Self {
             migrations: vec![],
@@ -52,5 +52,20 @@ impl<D: SqlxDBNum + std::fmt::Debug> Migrator<D> {
 
     pub fn add_migration(&mut self, migration: Migration) {
         self.migrations.push(migration);
+    }
+}
+
+#[derive(Debug)]
+pub struct Migrator {}
+
+impl Migrator {
+    pub async fn new<D: SqlxDBNum + std::fmt::Debug>(
+        migrations: &[Migration],
+    ) -> Result<sqlx::migrate::Migrator, sqlx::migrate::MigrateError> {
+        let mut source = RepoMigrationSource::<D>::new();
+        migrations
+            .iter()
+            .for_each(|migration| source.add_migration(*migration));
+        sqlx::migrate::Migrator::new(source).await
     }
 }

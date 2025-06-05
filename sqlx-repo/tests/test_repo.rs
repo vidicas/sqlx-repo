@@ -11,9 +11,7 @@ fn migration1() -> Migration {
 #[repo(Send + Sync + std::fmt::Debug)]
 impl Repo for DatabaseRepository {
     async fn migrate(&self) -> Result<()> {
-        let mut migrator = Migrator::<D>::new();
-        migrator.add_migration(migration1());
-        let migrator = sqlx::migrate::Migrator::new(migrator).await?;
+        let migrator = Migrator::new::<D>(&[migration1()]).await?;
         migrator.run(&self.pool).await?;
         Ok(())
     }
