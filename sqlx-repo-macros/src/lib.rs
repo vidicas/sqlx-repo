@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::{ToTokens, quote, quote_spanned};
 use sql_bridge::{Ast, MySqlDialect, PostgreSqlDialect, SQLiteDialect, ToQuery};
 use syn::{
@@ -226,60 +227,6 @@ fn asts_to_query(
     Ok(queries)
 }
 
-#[proc_macro]
-pub fn query(input: TokenStream) -> TokenStream {
-    let input: syn::Expr = syn::parse(input).expect("expected expression");
-    match input {
-        Expr::Lit(ExprLit {
-            lit: Lit::Str(lit), ..
-        }) => {
-            let query = lit.value();
-            let ast_list = match Ast::parse(query.as_str()) {
-                Ok(ast) => ast,
-                Err(e) => {
-                    let err = format!("failed to parse query: {e}");
-                    return quote_spanned! {
-                        lit.span() => compile_error!(#err)
-                    }
-                    .into();
-                }
-            };
-            let ast_list = ast_list.as_slice();
-            let dialects: &[&dyn ToQuery] =
-                &[&PostgreSqlDialect {}, &SQLiteDialect {}, &MySqlDialect {}];
-            let query_list = match dialects
-                .iter()
-                .map(|dialect| asts_to_query(ast_list, *dialect))
-                .collect::<Result<Vec<_>, _>>()
-            {
-                Ok(q) => q,
-                Err(e) => {
-                    let err = format!("failed to build queries list: {e}");
-                    return quote_spanned! {
-                        lit.span() => compile_error!(#err)
-                    }
-                    .into();
-                }
-            };
-            let postgres_query = &query_list[0];
-            let sqlite_query = &query_list[1];
-            let mysql_query = &query_list[2];
-            quote_spanned! {
-                lit.span() => {
-                    static QUERIES: [&str; 3] = [
-                        #postgres_query,
-                        #sqlite_query,
-                        #mysql_query
-                    ];
-                    QUERIES[<D as SqlxDBNum>::pos()]
-                }
-            }
-            .into()
-        }
-        _ => quote! { compile_error!("expected string"); }.into(),
-    }
-}
-
 fn get_literal(input: &syn::Expr) -> Result<&LitStr, TokenStream> {
     match input {
         Expr::Lit(ExprLit {
@@ -293,27 +240,20 @@ fn get_literal(input: &syn::Expr) -> Result<&LitStr, TokenStream> {
     }
 }
 
-#[proc_macro]
-pub fn gen_query(input: TokenStream) -> TokenStream {
-    let input: syn::Expr = syn::parse(input).expect("expected expression");
-    let lit = match get_literal(&input) {
-        Ok(lit) => lit,
-        Err(token_stream) => return token_stream,
-    };
-    let query = lit.value();
-    let ast_list = match sql_bridge::Ast::parse(query.as_str()) {
+fn build_queries(span: Span, query: &str) -> Result<(String, String, String), TokenStream> {
+    let ast_list = match sql_bridge::Ast::parse(query) {
         Ok(ast) => ast,
         Err(e) => {
             let err = format!("failed to parse query: {e}");
-            return quote_spanned! {
-                lit.span() => compile_error!(#err)
+            return Err(quote_spanned! {
+                span => compile_error!(#err)
             }
-            .into();
+            .into());
         }
     };
     let ast_list = ast_list.as_slice();
     let dialects: &[&dyn ToQuery] = &[&PostgreSqlDialect {}, &SQLiteDialect {}, &MySqlDialect {}];
-    let query_list = match dialects
+    let mut query_list = match dialects
         .iter()
         .map(|dialect| asts_to_query(ast_list, *dialect))
         .collect::<Result<Vec<_>, _>>()
@@ -321,15 +261,33 @@ pub fn gen_query(input: TokenStream) -> TokenStream {
         Ok(q) => q,
         Err(e) => {
             let err = format!("failed to build queries list: {e}");
-            return quote_spanned! {
-                lit.span() => compile_error!(#err)
-            }
-            .into();
+            return Err(quote_spanned! { span => compile_error!(#err) }.into());
         }
     };
-    let postgres_query = &query_list[0];
-    let sqlite_query = &query_list[1];
-    let mysql_query = &query_list[2];
+    if query_list.len() != 3 {
+        return Err(quote!(compile_error!("query list length is expected to be 3")).into());
+    }
+    let mysql_query = query_list.pop().unwrap();
+    let sqlite_query = query_list.pop().unwrap();
+    let postgres_query = query_list.pop().unwrap();
+    Ok((postgres_query, sqlite_query, mysql_query))
+}
+
+#[proc_macro]
+pub fn gen_query(input: TokenStream) -> TokenStream {
+    let input: syn::Expr = match syn::parse(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let lit = match get_literal(&input) {
+        Ok(lit) => lit,
+        Err(token_stream) => return token_stream,
+    };
+    let query = lit.value();
+    let (postgres_query, sqlite_query, mysql_query) = match build_queries(lit.span(), &query) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
     quote_spanned! {
         lit.span() => {
             &[
@@ -337,6 +295,34 @@ pub fn gen_query(input: TokenStream) -> TokenStream {
                 #sqlite_query,
                 #mysql_query
             ]
+        }
+    }
+    .into()
+}
+
+#[proc_macro]
+pub fn query(input: TokenStream) -> TokenStream {
+    let input: syn::Expr = match syn::parse(input) {
+        Ok(input) => input,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let lit = match get_literal(&input) {
+        Ok(lit) => lit,
+        Err(token_stream) => return token_stream,
+    };
+    let query = lit.value();
+    let (postgres_query, sqlite_query, mysql_query) = match build_queries(lit.span(), &query) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    quote_spanned! {
+        lit.span() => {
+            static QUERIES: [&str; 3] = [
+                #postgres_query,
+                #sqlite_query,
+                #mysql_query
+            ];
+            QUERIES[<D as SqlxDBNum>::pos()]
         }
     }
     .into()

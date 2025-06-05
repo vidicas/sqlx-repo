@@ -10,4 +10,4 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 sql-bridge = { path = "../sql-bridge" }
-syn = { version = "2", features = ["full"] }
+syn = { version = "2", features = ["full", "extra-traits"] }
