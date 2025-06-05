@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sqlx_db_repo::prelude::*;
+use sqlx_repo::prelude::*;
 
 fn migration1() -> Migration {
     migration!(
