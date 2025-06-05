@@ -75,10 +75,17 @@ macro_rules! migration {
     };
 }
 
+#[macro_export]
+macro_rules! migrator {
+    ($($migrations:tt)*) => {
+        ::sqlx_repo::prelude::init_migrator::<D>($($migrations)*)
+    }
+}
+
 pub mod prelude {
     pub use super::{
-        migration,
-        migrator::{Migration, Migrator},
+        migration, migrator,
+        migrator::{init_migrator, Migration},
         DatabaseRepository, SqlxDBNum,
     };
     pub use chrono;

@@ -55,17 +55,12 @@ impl<D: SqlxDBNum + std::fmt::Debug> RepoMigrationSource<D> {
     }
 }
 
-#[derive(Debug)]
-pub struct Migrator {}
-
-impl Migrator {
-    pub async fn new<D: SqlxDBNum + std::fmt::Debug>(
-        migrations: &[Migration],
-    ) -> Result<sqlx::migrate::Migrator, sqlx::migrate::MigrateError> {
-        let mut source = RepoMigrationSource::<D>::new();
-        migrations
-            .iter()
-            .for_each(|migration| source.add_migration(*migration));
-        sqlx::migrate::Migrator::new(source).await
-    }
+pub async fn init_migrator<D: SqlxDBNum + std::fmt::Debug>(
+    migrations: &[Migration],
+) -> Result<sqlx::migrate::Migrator, sqlx::migrate::MigrateError> {
+    let mut source = RepoMigrationSource::<D>::new();
+    migrations
+        .iter()
+        .for_each(|migration| source.add_migration(*migration));
+    sqlx::migrate::Migrator::new(source).await
 }

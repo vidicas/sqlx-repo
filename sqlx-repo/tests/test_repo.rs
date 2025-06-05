@@ -11,7 +11,7 @@ fn migration1() -> Migration {
 #[repo(Send + Sync + std::fmt::Debug)]
 impl Repo for DatabaseRepository {
     async fn migrate(&self) -> Result<()> {
-        let migrator = Migrator::new::<D>(&[migration1()]).await?;
+        let migrator = migrator!(&[migration1()]).await?;
         migrator.run(&self.pool).await?;
         Ok(())
     }
