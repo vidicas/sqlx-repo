@@ -70,7 +70,7 @@ macro_rules! migration {
     ($name:expr, $migration:expr) => {
         ::sqlx_repo::prelude::Migration {
             name: $name,
-            queries: ::sqlx_repo_macros::gen_query!($migration),
+            queries: ::sqlx_repo::__hidden::gen_query!($migration),
         }
     };
 }
@@ -95,4 +95,9 @@ pub mod prelude {
     pub use sqlx_repo_macros::repo;
     pub use url;
     pub use uuid;
+}
+
+#[doc(hidden)]
+pub mod __hidden {
+    pub use sqlx_repo_macros::{gen_query, query};
 }

@@ -189,7 +189,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }).collect::<Vec<&Signature>>();
             let private_impl = quote!{
-                use sqlx_repo_macros::query;
+                use sqlx_repo::__hidden::query;
                 #database_constructor
             };
             let repo_trait = quote! {
