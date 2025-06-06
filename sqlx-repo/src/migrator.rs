@@ -16,7 +16,7 @@ pub struct Migration {
     pub queries: &'static [&'static str],
 }
 
-impl<'a, D: SqlxDBNum + std::fmt::Debug> MigrationSource<'a> for RepoMigrationSource<D> {
+impl<'a, D: SqlxDBNum> MigrationSource<'a> for RepoMigrationSource<D> {
     fn resolve(self) -> BoxFuture<'a, Result<Vec<SqlxMigration>, sqlx::error::BoxDynError>> {
         Box::pin(async move {
             let migrations = self.migrations
@@ -36,13 +36,13 @@ impl<'a, D: SqlxDBNum + std::fmt::Debug> MigrationSource<'a> for RepoMigrationSo
     }
 }
 
-impl<D: SqlxDBNum + std::fmt::Debug> Default for RepoMigrationSource<D> {
+impl<D: SqlxDBNum> Default for RepoMigrationSource<D> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: SqlxDBNum + std::fmt::Debug> RepoMigrationSource<D> {
+impl<D: SqlxDBNum> RepoMigrationSource<D> {
     pub fn new() -> Self {
         Self {
             migrations: vec![],
@@ -55,7 +55,7 @@ impl<D: SqlxDBNum + std::fmt::Debug> RepoMigrationSource<D> {
     }
 }
 
-pub async fn init_migrator<D: SqlxDBNum + std::fmt::Debug>(
+pub async fn init_migrator<D: SqlxDBNum>(
     migrations: &[Migration],
 ) -> Result<sqlx::migrate::Migrator, sqlx::migrate::MigrateError> {
     let mut source = RepoMigrationSource::<D>::new();

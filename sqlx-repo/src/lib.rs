@@ -41,7 +41,7 @@ impl<D: sqlx::Database> DatabaseRepository<D> {
     }
 }
 
-pub trait SqlxDBNum {
+pub trait SqlxDBNum: std::fmt::Debug {
     fn pos() -> usize {
         usize::MAX
     }
