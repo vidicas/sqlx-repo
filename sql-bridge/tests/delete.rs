@@ -19,7 +19,7 @@ fn delete_from() {
 
 #[test]
 fn delete_from_where() {
-    let input = "DELETE FROM test WHERE key = 1";
+    let input = "DELETE FROM test WHERE `key` = 1";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
