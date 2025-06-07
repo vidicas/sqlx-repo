@@ -515,6 +515,7 @@ pub enum Selection {
     Ident(String),
     Number(String),
     String(String),
+    Placeholder,
 }
 
 impl TryFrom<&Expr> for Selection {
@@ -537,6 +538,7 @@ impl TryFrom<&Expr> for Selection {
             Expr::Value(value) => match &value.value {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
+                Value::Placeholder(_) => Selection::Placeholder,
                 _ => Err(format!(
                     "unsupported conversion to Selection from value: {:#?}",
                     value.value
@@ -573,7 +575,7 @@ pub enum InsertSource {
     String(String),
     Number(String),
     Null,
-    PlaceHolder,
+    Placeholder,
     Cast {
         cast: String,
         source: Box<InsertSource>,
@@ -610,7 +612,7 @@ impl TryFrom<&Expr> for InsertSource {
             Value::Null => InsertSource::Null,
             Value::Number(number, _) => InsertSource::Number(number.clone()),
             Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
-            Value::Placeholder(_) => InsertSource::PlaceHolder,
+            Value::Placeholder(_) => InsertSource::Placeholder,
             value => Err(format!(
                 "unsupported conversion to insert source from value: {value:#?}"
             ))?,
@@ -630,7 +632,7 @@ pub enum UpdateValue {
     String(String),
     Number(String),
     Null,
-    PlaceHolder,
+    Placeholder,
 }
 
 impl TryFrom<&Expr> for UpdateValue {
@@ -647,7 +649,7 @@ impl TryFrom<&Expr> for UpdateValue {
             Value::Null => UpdateValue::Null,
             Value::Number(number, _) => UpdateValue::Number(number.clone()),
             Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
-            Value::Placeholder(_) => UpdateValue::PlaceHolder,
+            Value::Placeholder(_) => UpdateValue::Placeholder,
             value => Err(format!(
                 "unsupported conversion into UpdateValue from value: {value:#?}"
             ))?,
@@ -660,6 +662,7 @@ impl TryFrom<&Expr> for UpdateValue {
 pub enum Op {
     Eq,
     And,
+    Or,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -674,6 +677,7 @@ impl TryFrom<&BinaryOperator> for Op {
         let op = match op {
             BinaryOperator::And => Op::And,
             BinaryOperator::Eq => Op::Eq,
+            BinaryOperator::Or => Op::Or,
             _ => Err(format!("binary operator not supported {op:?}"))?,
         };
         Ok(op)
@@ -1783,7 +1787,7 @@ impl Ast {
             InsertSource::Null => buf.write_all(b"NULL")?,
             InsertSource::Number(num) => buf.write_all(num.as_bytes())?,
             InsertSource::String(string) => Self::write_single_quoted(dialect, buf, string)?,
-            InsertSource::PlaceHolder => {
+            InsertSource::Placeholder => {
                 buf.write_all(dialect.placeholder(place_holder_num).as_bytes())?;
             }
             InsertSource::Cast { cast, source } => {
@@ -1843,14 +1847,40 @@ impl Ast {
         buf: &mut dyn Write,
         selection: &Selection,
     ) -> Result<()> {
+        let mut placeholder_count = 0;
+        Self::selection_to_sql_with_placeholder_count(
+            dialect,
+            buf,
+            selection,
+            &mut placeholder_count,
+        )
+    }
+
+    fn selection_to_sql_with_placeholder_count(
+        dialect: &dyn ToQuery,
+        buf: &mut dyn Write,
+        selection: &Selection,
+        placeholder_count: &mut usize,
+    ) -> Result<()> {
         match selection {
             Selection::BinaryOp { op, left, right } => {
-                Self::selection_to_sql(dialect, buf, left)?;
+                Self::selection_to_sql_with_placeholder_count(
+                    dialect,
+                    buf,
+                    left,
+                    placeholder_count,
+                )?;
                 match op {
                     Op::And => buf.write_all(b" AND ")?,
                     Op::Eq => buf.write_all(b" = ")?,
+                    Op::Or => buf.write_all(b" OR ")?,
                 }
-                Self::selection_to_sql(dialect, buf, right)?;
+                Self::selection_to_sql_with_placeholder_count(
+                    dialect,
+                    buf,
+                    right,
+                    placeholder_count,
+                )?;
             }
             Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
             Selection::Number(number) => buf.write_all(number.as_bytes())?,
@@ -1858,6 +1888,10 @@ impl Ast {
                 for chunk in [b"'", string.as_bytes(), b"'"] {
                     buf.write_all(chunk)?;
                 }
+            }
+            Selection::Placeholder => {
+                *placeholder_count += 1;
+                buf.write_all(dialect.placeholder(*placeholder_count).as_bytes())?;
             }
         };
         Ok(())
@@ -1883,7 +1917,7 @@ impl Ast {
                 UpdateValue::Null => buf.write_all(b"NULL")?,
                 UpdateValue::String(string) => Self::write_single_quoted(dialect, buf, string)?,
                 UpdateValue::Number(number) => buf.write_all(number.as_bytes())?,
-                UpdateValue::PlaceHolder => {
+                UpdateValue::Placeholder => {
                     buf.write_all(dialect.placeholder(pos + 1).as_bytes())?
                 }
             }

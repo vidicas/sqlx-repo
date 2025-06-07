@@ -167,3 +167,45 @@ fn select_literal_constant_string() {
     assert_eq!(ast.to_sql(&SQLiteDialect {}).unwrap(), "SELECT '1'");
     assert_eq!(ast.to_sql(&PostgreSqlDialect {}).unwrap(), "SELECT '1'");
 }
+
+#[test]
+fn select_with_placeholder() {
+    let input = "select * from test where id = ?";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` = ?"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` = ?"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" WHERE \"id\" = $1"
+    );
+}
+
+#[test]
+fn select_with_multiple_placeholder() {
+    let input = "select * from test where id = ? and value = ? or id = ?";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` = ? AND `value` = ? OR `id` = ?"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` = ? AND `value` = ? OR `id` = ?"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" WHERE \"id\" = $1 AND \"value\" = $2 OR \"id\" = $3"
+    );
+}
