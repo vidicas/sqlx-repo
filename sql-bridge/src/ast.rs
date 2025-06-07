@@ -516,6 +516,11 @@ pub enum Selection {
     Number(String),
     String(String),
     Placeholder,
+    InList {
+        negated: bool,
+        ident: String,
+        list: Vec<Selection>,
+    },
 }
 
 impl TryFrom<&Expr> for Selection {
@@ -544,6 +549,35 @@ impl TryFrom<&Expr> for Selection {
                     value.value
                 ))?,
             },
+            Expr::InList {
+                expr,
+                list,
+                negated,
+            } => {
+                let ident = match expr.as_ref().try_into()? {
+                    Selection::Ident(ident) => ident,
+                    _ => Err("unsupported conversion to Selection, InList currently supports only Identifiers".to_string())?,
+                };
+                let list = list
+                    .iter()
+                    .map(|expr| {
+                        let ok = match expr.try_into()? {
+                            ok@Selection::String(_) => ok,
+                            ok@Selection::Number(_) => ok,
+                            ok@Selection::Placeholder => ok,
+                            _ => Err(format!(
+                                "unsupported conversion in Selection, unsupported expression in list of InList: {expr:?}"
+                            ))?
+                        };
+                        Ok(ok)
+                    })
+                    .collect::<Result<Vec<Selection>>>()?;
+                Selection::InList {
+                    negated: *negated,
+                    ident,
+                    list,
+                }
+            }
             expr => Err(format!(
                 "unsupported conversion to Selection from expr: {expr:?}"
             ))?,
@@ -1892,6 +1926,30 @@ impl Ast {
             Selection::Placeholder => {
                 *placeholder_count += 1;
                 buf.write_all(dialect.placeholder(*placeholder_count).as_bytes())?;
+            }
+            Selection::InList {
+                negated,
+                ident,
+                list,
+            } => {
+                Self::write_quoted(dialect, buf, ident)?;
+                if *negated {
+                    buf.write_all(b" NOT")?;
+                }
+                buf.write_all(b" IN ")?;
+                buf.write_all(b"(")?;
+                for (pos, selection) in list.iter().enumerate() {
+                    if pos != 0 {
+                        buf.write_all(b", ")?;
+                    }
+                    Self::selection_to_sql_with_placeholder_count(
+                        dialect,
+                        buf,
+                        selection,
+                        placeholder_count,
+                    )?;
+                }
+                buf.write_all(b")")?;
             }
         };
         Ok(())

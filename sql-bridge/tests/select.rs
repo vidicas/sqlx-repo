@@ -209,3 +209,45 @@ fn select_with_multiple_placeholder() {
         "SELECT * FROM \"test\" WHERE \"id\" = $1 AND \"value\" = $2 OR \"id\" = $3"
     );
 }
+
+#[test]
+fn select_in() {
+    let input = "select * from test where id IN (1, '2', ?)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" WHERE \"id\" IN (1, '2', $1)"
+    );
+}
+
+#[test]
+fn select_not_in() {
+    let input = "select * from test where id NOT IN (1, '2', ?)";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` NOT IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` NOT IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" WHERE \"id\" NOT IN (1, '2', $1)"
+    );
+}
