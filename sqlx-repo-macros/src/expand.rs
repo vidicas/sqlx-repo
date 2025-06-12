@@ -286,6 +286,12 @@ mod test {
                     Ok(())
                 }
 
+                async fn with_where_clause<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()>
+                    where 'a: 'b
+                {
+                    Ok(())
+                }
+
                 fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
                     Ok(())
                 }
@@ -302,6 +308,7 @@ mod test {
         expander.visit_item_mut(&mut syntax_tree);
 
         let pretty_syntax_tree = prettify(syntax_tree);
+        //println!("{pretty_syntax_tree}");
         let expected = "\
 impl<D> Repo for DatabaseRepo<D>
 where
@@ -364,6 +371,20 @@ where
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
     >
     where
+        a: 'future_lifetime,
+        b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn with_where_clause<'a, 'b, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'b,
         a: 'future_lifetime,
         b: 'future_lifetime,
         T: 'future_lifetime,
