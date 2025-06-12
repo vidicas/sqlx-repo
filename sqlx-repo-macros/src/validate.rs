@@ -4,6 +4,8 @@ use syn::{Item, spanned::Spanned, visit::Visit};
 
 struct Validator {
     error: Option<ValidatorError>,
+    trait_name: Option<()>,
+    type_name: Option<()>,
 }
 
 enum ValidatorError {
@@ -11,6 +13,7 @@ enum ValidatorError {
     NoWhereClauseAllowed(Span),
     NotTraitImplBlock(Span),
     NoAssocTypesAllowed(Span),
+    IncorrectImplTypeName(Span),
 }
 
 impl ValidatorError {
@@ -28,6 +31,7 @@ impl ValidatorError {
             Self::NoWhereClauseAllowed(span) => span,
             Self::NotTraitImplBlock(span) => span,
             Self::NoAssocTypesAllowed(span) => span,
+            Self::IncorrectImplTypeName(span) => span,
         }
     }
 
@@ -37,17 +41,30 @@ impl ValidatorError {
             Self::NoWhereClauseAllowed(_) => "No where clause allowed in trait implementation",
             Self::NotTraitImplBlock(_) => "Only trait implementation blocks are supported",
             Self::NoAssocTypesAllowed(_) => "Trait associated types are not supported",
+            Self::IncorrectImplTypeName(_) => "Incorrect type name in trait implementation",
         }
     }
 }
 
 impl Validator {
     fn new() -> Self {
-        Self { error: None }
+        Self {
+            error: None,
+            trait_name: None,
+            type_name: None,
+        }
     }
 
     fn to_compile_error(&self) -> Option<proc_macro2::TokenStream> {
         self.error.as_ref().map(|err| err.to_compile_error())
+    }
+
+    fn valid_ty_name(&self, i: &syn::Item) -> bool {
+        let type_path = match i {
+            syn::Item::Type(type_path) => type_path,
+            _ => return false,
+        };
+        false
     }
 }
 
@@ -62,6 +79,19 @@ impl Visit<'_> for Validator {
 
     fn visit_where_clause(&mut self, i: &syn::WhereClause) {
         self.error = Some(ValidatorError::NoWhereClauseAllowed(i.span()))
+    }
+
+    fn visit_ident(&mut self, i: &proc_macro2::Ident) {
+        if self.trait_name.is_none() {
+            self.trait_name = Some(());
+            return;
+        }
+        if self.type_name.is_none() {
+            if *i != "DatabaseRepository" {
+                self.error = Some(ValidatorError::IncorrectImplTypeName(i.span()))
+            }
+            self.type_name = Some(())
+        }
     }
 
     fn visit_item(&mut self, i: &syn::Item) {
@@ -96,10 +126,10 @@ mod test {
             }
         };
 
-        let mut syntax_tree: Item = syn::parse2(code).unwrap();
+        let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
 
-        validator.visit_item(&mut syntax_tree);
+        validator.visit_item(&syntax_tree);
         assert!(validator.error.is_some());
         let error = validator.error.take().unwrap();
         assert_eq!(
@@ -191,7 +221,7 @@ mod test {
     #[test]
     fn invalid_type_name() {
         let code = quote! {
-            impl Repo for DatabaseRepo{
+            impl Repo for DatabaseRepo {
             }
         };
 
@@ -199,8 +229,14 @@ mod test {
         let mut validator = Validator::new();
 
         validator.visit_item(&syntax_tree);
-        assert!(validator.error.is_none());
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
+        assert_eq!(
+            error.to_compile_error().to_string(),
+            "compile_error ! (\"Incorrect type name in trait implementation\")"
+        )
     }
+
     #[test]
     fn valid_impl() {
         let code = quote! {
