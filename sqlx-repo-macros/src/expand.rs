@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::ToTokens as _;
+use quote::{quote_spanned, ToTokens as _};
 use syn::{
     Token, WhereClause, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
@@ -171,7 +171,12 @@ impl Expander {
         }
     }
 
-    fn visit_func_block(&mut self, func_block: &mut syn::Block) {}
+    fn visit_func_block(&mut self, func_block: &mut syn::Block) {
+        let tokens = func_block.to_token_stream();
+        *func_block = parse_quote_spanned!(func_block.span() => {
+            Box::pin(async move #tokens)
+        });
+    }
 }
 
 impl VisitMut for Expander {
@@ -318,7 +323,7 @@ where
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
     > {
-        Ok(())
+        Box::pin(async move { Ok(()) })
     }
     fn explicit_lifetime_on_receiver<'a, 'b, 'future_lifetime, T>(
         &'a self,
@@ -326,7 +331,7 @@ where
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
     > {
-        Ok(())
+        Box::pin(async move { Ok(()) })
     }
     fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
         Ok(())
