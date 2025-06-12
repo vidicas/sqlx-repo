@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use quote::quote_spanned;
+use quote::{ToTokens as _, quote_spanned};
 use syn::{
     Item,
     spanned::Spanned,
@@ -8,8 +8,6 @@ use syn::{
 
 struct Validator {
     error: Option<ValidatorError>,
-    trait_name: Option<()>,
-    type_name: Option<()>,
 }
 
 enum ValidatorError {
@@ -24,9 +22,9 @@ impl ValidatorError {
     fn to_compile_error(&self) -> proc_macro2::TokenStream {
         let span = self.span();
         let error = self.error();
-        quote_spanned! {
+        quote_spanned! (
             span => compile_error!(#error)
-        }
+        )
     }
 
     fn span(&self) -> Span {
@@ -52,11 +50,7 @@ impl ValidatorError {
 
 impl Validator {
     fn new() -> Self {
-        Self {
-            error: None,
-            trait_name: None,
-            type_name: None,
-        }
+        Self { error: None }
     }
 
     fn to_compile_error(&self) -> Option<proc_macro2::TokenStream> {
@@ -69,32 +63,26 @@ impl Visit<'_> for Validator {
         self.error = Some(ValidatorError::NoAssocTypesAllowed(i.span()));
     }
 
-    fn visit_generic_argument(&mut self, i: &syn::GenericArgument) {
-        self.error = Some(ValidatorError::NoGenericsAllowed(i.span()));
-    }
-
     fn visit_where_clause(&mut self, i: &syn::WhereClause) {
         self.error = Some(ValidatorError::NoWhereClauseAllowed(i.span()));
     }
 
-    fn visit_ident(&mut self, i: &proc_macro2::Ident) {
-        if self.trait_name.is_none() {
-            self.trait_name = Some(());
-            return visit::visit_ident(self, i);
-        }
-        if self.type_name.is_none() {
-            if *i != "DatabaseRepository" {
-                self.error = Some(ValidatorError::IncorrectImplTypeName(i.span()));
-                return;
-            }
-            self.type_name = Some(())
-        }
-        visit::visit_ident(self, i)
-    }
-
     fn visit_item(&mut self, i: &syn::Item) {
         match i {
-            Item::Impl(i) if i.trait_.is_some() => visit::visit_item_impl(self, i),
+            Item::Impl(i) if !i.generics.params.is_empty() => {
+                self.error = Some(ValidatorError::NoGenericsAllowed(i.span()))
+            }
+            Item::Impl(i) if i.self_ty.to_token_stream().to_string() != "DatabaseRepository" => {
+                self.error = Some(ValidatorError::IncorrectImplTypeName(i.span()))
+            }
+            Item::Impl(i) if i.trait_.is_some() => {
+                let trait_path = &i.trait_.as_ref().unwrap().1;
+                if trait_path.segments.first().unwrap().arguments != syn::PathArguments::None {
+                    self.error = Some(ValidatorError::NoGenericsAllowed(i.span()))
+                } else {
+                    visit::visit_item_impl(self, i)
+                }
+            }
             _ => {
                 self.error = Some(ValidatorError::NotTraitImplBlock(i.span()));
             }
@@ -118,11 +106,11 @@ mod test {
 
     #[test]
     fn trait_with_generic() {
-        let code = quote! {
+        let code = quote! (
             impl Repo<'a> for DatabaseRepository {
 
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
@@ -138,16 +126,14 @@ mod test {
 
     #[test]
     fn type_with_generic() {
-        let code = quote! {
-            impl<D> Repo for DatabaseRepository<D> {
+        let code = quote!(
+            impl<D> Repo for DatabaseRepository<D> {}
+        );
 
-            }
-        };
-
-        let mut syntax_tree: Item = syn::parse2(code).unwrap();
+        let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
 
-        validator.visit_item(&mut syntax_tree);
+        validator.visit_item(&syntax_tree);
         assert!(validator.error.is_some());
         let error = validator.error.take().unwrap();
         assert_eq!(
@@ -158,11 +144,11 @@ mod test {
 
     #[test]
     fn trait_with_where() {
-        let code = quote! {
+        let code = quote! (
             impl Repo for DatabaseRepository where 'a: 'b {
 
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
@@ -178,12 +164,12 @@ mod test {
 
     #[test]
     fn trait_with_assoc_type() {
-        let code = quote! {
+        let code = quote! (
             impl Repo for DatabaseRepository {
                 type Assoc = ();
 
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
@@ -199,10 +185,10 @@ mod test {
 
     #[test]
     fn not_trait_impl() {
-        let code = quote! {
+        let code = quote! (
             impl DatabaseRepository {
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
@@ -218,10 +204,10 @@ mod test {
 
     #[test]
     fn invalid_type_name() {
-        let code = quote! {
+        let code = quote! (
             impl Repo for DatabaseRepo {
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
@@ -237,10 +223,13 @@ mod test {
 
     #[test]
     fn valid_impl() {
-        let code = quote! {
+        let code = quote! (
             impl Repo for DatabaseRepository {
+                async fn test(&self) -> Result<()> {
+                    Ok(())
+                }
             }
-        };
+        );
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
         let mut validator = Validator::new();
