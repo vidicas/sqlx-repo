@@ -71,13 +71,16 @@ impl Expander {
 
         // rewrite function arguments with explicit lifetimes, collect all existing lifetimes
         // for signature transformation
-        let lifetimes = func
+        let mut lifetimes = func
             .sig
             .inputs
             .iter_mut()
             .enumerate()
             .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
             .collect::<Vec<_>>();
+        
+        // add additional lifetime to lifetimes which will be used for return type in future bound
+        lifetimes.push(LifetimeType::Generated(syn::parse_str("'future_lifetime").expect("failed to parse future lifetime")));
 
         // rewrite function signature
         self.visit_func_signature(&mut func.sig, lifetimes.as_slice());
@@ -142,6 +145,30 @@ impl Expander {
         func_signature.output = syn::ReturnType::Type(Token![->](output_span), Box::new(output));
 
         // update function generics with
+        let mut type_generics = vec![];
+        loop {
+            let pop = match func_signature.generics.params.last() {
+                Some(syn::GenericParam::Type(_)) => true,
+                _ => false,
+            };
+            if pop {
+                type_generics.push(func_signature.generics.params.pop().unwrap().into_tuple().0);
+            }
+            break
+        }
+        
+        for lifetime in lifetimes {
+            match lifetime {
+                LifetimeType::Preexisted(_) => continue,
+                LifetimeType::Generated(lifetime) => {
+                    func_signature.generics.params.push(syn::GenericParam::Lifetime(parse_quote!(#lifetime)));
+                }
+            }
+        }
+        
+        while let Some(type_generic) = type_generics.pop() {
+            func_signature.generics.params.push(type_generic);
+        }
     }
 
     fn visit_func_block(&mut self, func_block: &mut syn::Block) {}
@@ -218,19 +245,19 @@ mod test {
     fn test_expand() {
         let code = quote! {
             impl Repo for DatabaseRepo<D> {
-                async fn elided_lifetime_on_receiver(&self, arg: &()) -> Result<()> {
+                async fn elided_lifetime_on_receiver<T>(&self, arg: &T) -> Result<()> {
                     Ok(())
                 }
 
-                async fn explicit_lifetime_on_receiver<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
+                async fn explicit_lifetime_on_receiver<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
                     Ok(())
                 }
 
-                fn non_async_elided(&self, arg: &()) -> Result<()> {
+                fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
                     Ok(())
                 }
 
-                fn non_async_explicit<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
+                fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
                     Ok(())
                 }
             }
@@ -240,10 +267,10 @@ mod test {
         let mut expander = Expander::new();
 
         expander.visit_item_mut(&mut syntax_tree);
-        println!("{}", prettify(syntax_tree.clone()));
-        assert_eq!(
-            prettify(syntax_tree),
-            "\
+        
+        let pretty_syntax_tree = prettify(syntax_tree);
+        println!("{pretty_syntax_tree}");
+        let expected = "\
 impl<D> Repo for DatabaseRepo<D>
 where
     D: ::sqlx::Database + ::sqlx_repo::SqlxDBNum,
@@ -285,30 +312,31 @@ where
     for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
     D::Connection: ::sqlx::migrate::Migrate,
 {
-    fn elided_lifetime_on_receiver(
+    fn elided_lifetime_on_receiver<'life0, 'life1, 'future_lifetime, T>(
         &'life0 self,
-        arg: &'life1 (),
+        arg: &'life1 T,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
     > {
         Ok(())
     }
-    fn explicit_lifetime_on_receiver<'a, 'b>(
+    fn explicit_lifetime_on_receiver<'a, 'b, 'future_lifetime, T>(
         &'a self,
-        arg: &'b (),
+        arg: &'b T,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
     > {
         Ok(())
     }
-    fn non_async_elided(&self, arg: &()) -> Result<()> {
+    fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
         Ok(())
     }
-    fn non_async_explicit<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
+    fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
         Ok(())
     }
 }
-"
-        )
+";
+
+        assert!(pretty_syntax_tree == expected, "got:\n{}\nexpected:\n{}\n", pretty_syntax_tree, expected)
     }
 }
