@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::{quote_spanned, ToTokens as _};
+use quote::ToTokens as _;
 use syn::{
     Token, WhereClause, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
@@ -78,9 +78,11 @@ impl Expander {
             .enumerate()
             .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
             .collect::<Vec<_>>();
-        
+
         // add additional lifetime to lifetimes which will be used for return type in future bound
-        lifetimes.push(LifetimeType::Generated(syn::parse_str("'future_lifetime").expect("failed to parse future lifetime")));
+        lifetimes.push(LifetimeType::Generated(
+            syn::parse_str("'future_lifetime").expect("failed to parse future lifetime"),
+        ));
 
         // rewrite function signature
         self.visit_func_signature(&mut func.sig, lifetimes.as_slice());
@@ -95,29 +97,25 @@ impl Expander {
             syn::FnArg::Receiver(receiver) => match receiver.reference {
                 None => None,
                 Some((and_token, None)) => {
-                    let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
-                        .expect("failed to parse lifetime");
+                    let lifetime: syn::Lifetime =
+                        syn::parse_str(&format!("'life{pos}")).expect("failed to parse lifetime");
                     receiver.reference = Some((and_token, Some(lifetime.clone())));
                     Some(LifetimeType::Generated(lifetime))
                 }
                 Some((_, Some(ref lifetime))) => Some(LifetimeType::Preexisted(lifetime.clone())),
             },
-            syn::FnArg::Typed(typed) => {
-                match &mut *typed.ty  {
-                    syn::Type::Reference(rf) => {
-                        match rf.lifetime.as_mut() {
-                            Some(lf) => Some(LifetimeType::Preexisted(lf.clone())),
-                            None => {
-                                let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
-                                    .expect("failed to parse lifetime");
-                                rf.lifetime = Some(lifetime.clone());
-                                Some(LifetimeType::Generated(lifetime))
-                            }
-                        }
-                    },
-                    _ => None
-                }
-            }
+            syn::FnArg::Typed(typed) => match &mut *typed.ty {
+                syn::Type::Reference(rf) => match rf.lifetime.as_mut() {
+                    Some(lf) => Some(LifetimeType::Preexisted(lf.clone())),
+                    None => {
+                        let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
+                            .expect("failed to parse lifetime");
+                        rf.lifetime = Some(lifetime.clone());
+                        Some(LifetimeType::Generated(lifetime))
+                    }
+                },
+                _ => None,
+            },
         }
     }
 
@@ -154,20 +152,50 @@ impl Expander {
             if pop {
                 type_generics.push(func_signature.generics.params.pop().unwrap().into_tuple().0);
             }
-            break
+            break;
         }
-        
+
         for lifetime in lifetimes {
             match lifetime {
                 LifetimeType::Preexisted(_) => continue,
                 LifetimeType::Generated(lifetime) => {
-                    func_signature.generics.params.push(syn::GenericParam::Lifetime(parse_quote!(#lifetime)));
+                    func_signature
+                        .generics
+                        .params
+                        .push(syn::GenericParam::Lifetime(parse_quote!(#lifetime)));
                 }
             }
         }
-        
+
         while let Some(type_generic) = type_generics.pop() {
             func_signature.generics.params.push(type_generic);
+        }
+
+        // for each generic parameter specify 'future_lifetime as a superclass
+
+        // ensure a where clause exists
+        if func_signature.generics.where_clause.is_none() {
+            func_signature.generics.where_clause = Some(syn::WhereClause {
+                where_token: Default::default(),
+                predicates: syn::punctuated::Punctuated::new(),
+            });
+        }
+
+        // add bounds to all generics
+        if let Some(where_clause) = &mut func_signature.generics.where_clause {
+            for param in func_signature.generics.params.iter() {
+                let ident = match param {
+                    syn::GenericParam::Type(param) => &param.ident,
+                    syn::GenericParam::Lifetime(lt) => &lt.lifetime.ident,
+                    _ => unreachable!("only type and lifetimes supported as generics"),
+                };
+                if *ident == "future_lifetime" {
+                    continue;
+                }
+                where_clause
+                    .predicates
+                    .push(parse_quote!(#ident: 'future_lifetime));
+            }
         }
     }
 
@@ -272,9 +300,8 @@ mod test {
         let mut expander = Expander::new();
 
         expander.visit_item_mut(&mut syntax_tree);
-        
+
         let pretty_syntax_tree = prettify(syntax_tree);
-        println!("{pretty_syntax_tree}");
         let expected = "\
 impl<D> Repo for DatabaseRepo<D>
 where
@@ -322,7 +349,12 @@ where
         arg: &'life1 T,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
-    > {
+    >
+    where
+        life0: 'future_lifetime,
+        life1: 'future_lifetime,
+        T: 'future_lifetime,
+    {
         Box::pin(async move { Ok(()) })
     }
     fn explicit_lifetime_on_receiver<'a, 'b, 'future_lifetime, T>(
@@ -330,7 +362,12 @@ where
         arg: &'b T,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
-    > {
+    >
+    where
+        a: 'future_lifetime,
+        b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
         Box::pin(async move { Ok(()) })
     }
     fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
@@ -342,6 +379,11 @@ where
 }
 ";
 
-        assert!(pretty_syntax_tree == expected, "got:\n{}\nexpected:\n{}\n", pretty_syntax_tree, expected)
+        assert!(
+            pretty_syntax_tree == expected,
+            "got:\n{}\nexpected:\n{}\n",
+            pretty_syntax_tree,
+            expected
+        )
     }
 }
