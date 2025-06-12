@@ -52,10 +52,6 @@ impl Validator {
 }
 
 impl Visit<'_> for Validator {
-    fn visit_assoc_type(&mut self, i: &syn::AssocType) {
-        self.error = Some(ValidatorError::NoAssocTypesAllowed(i.span()))
-    }
-
     fn visit_impl_item_type(&mut self, i: &'_ syn::ImplItemType) {
         self.error = Some(ValidatorError::NoAssocTypesAllowed(i.span()))
     }
@@ -95,17 +91,37 @@ mod test {
     #[test]
     fn trait_with_generic() {
         let code = quote! {
-            impl Repo<'a> for DatabaseRepo {
+            impl Repo<'a> for DatabaseRepository {
 
             }
         };
 
         let mut syntax_tree: Item = syn::parse2(code).unwrap();
-        let mut repo = Validator::new();
+        let mut validator = Validator::new();
 
-        repo.visit_item(&mut syntax_tree);
-        assert!(repo.error.is_some());
-        let error = repo.error.take().unwrap();
+        validator.visit_item(&mut syntax_tree);
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
+        assert_eq!(
+            error.to_compile_error().to_string(),
+            "compile_error ! (\"No generics allowed in trait implementation\")"
+        )
+    }
+
+    #[test]
+    fn type_with_generic() {
+        let code = quote! {
+            impl<D> Repo for DatabaseRepository<D> {
+
+            }
+        };
+
+        let mut syntax_tree: Item = syn::parse2(code).unwrap();
+        let mut validator = Validator::new();
+
+        validator.visit_item(&mut syntax_tree);
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
         assert_eq!(
             error.to_compile_error().to_string(),
             "compile_error ! (\"No generics allowed in trait implementation\")"
@@ -115,17 +131,17 @@ mod test {
     #[test]
     fn trait_with_where() {
         let code = quote! {
-            impl Repo for DatabaseRepo where 'a: 'b {
+            impl Repo for DatabaseRepository where 'a: 'b {
 
             }
         };
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
-        let mut repo = Validator::new();
+        let mut validator = Validator::new();
 
-        repo.visit_item(&syntax_tree);
-        assert!(repo.error.is_some());
-        let error = repo.error.take().unwrap();
+        validator.visit_item(&syntax_tree);
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
         assert_eq!(
             error.to_compile_error().to_string(),
             "compile_error ! (\"No where clause allowed in trait implementation\")"
@@ -135,18 +151,18 @@ mod test {
     #[test]
     fn trait_with_assoc_type() {
         let code = quote! {
-            impl Repo for DatabaseRepo {
+            impl Repo for DatabaseRepository {
                 type Assoc = ();
 
             }
         };
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
-        let mut repo = Validator::new();
+        let mut validator = Validator::new();
 
-        repo.visit_item(&syntax_tree);
-        assert!(repo.error.is_some());
-        let error = repo.error.take().unwrap();
+        validator.visit_item(&syntax_tree);
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
         assert_eq!(
             error.to_compile_error().to_string(),
             "compile_error ! (\"Trait associated types are not supported\")"
@@ -156,16 +172,16 @@ mod test {
     #[test]
     fn not_trait_impl() {
         let code = quote! {
-            impl DatabaseRepo {
+            impl DatabaseRepository {
             }
         };
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
-        let mut repo = Validator::new();
+        let mut validator = Validator::new();
 
-        repo.visit_item(&syntax_tree);
-        assert!(repo.error.is_some());
-        let error = repo.error.take().unwrap();
+        validator.visit_item(&syntax_tree);
+        assert!(validator.error.is_some());
+        let error = validator.error.take().unwrap();
         assert_eq!(
             error.to_compile_error().to_string(),
             "compile_error ! (\"Only trait implementation blocks are supported\")"
@@ -173,16 +189,29 @@ mod test {
     }
 
     #[test]
-    fn valid_impl() {
+    fn invalid_type_name() {
         let code = quote! {
-            impl Repo for DatabaseRepo {
+            impl Repo for DatabaseRepo{
             }
         };
 
         let syntax_tree: Item = syn::parse2(code).unwrap();
-        let mut repo = Validator::new();
+        let mut validator = Validator::new();
 
-        repo.visit_item(&syntax_tree);
-        assert!(repo.error.is_none());
+        validator.visit_item(&syntax_tree);
+        assert!(validator.error.is_none());
+    }
+    #[test]
+    fn valid_impl() {
+        let code = quote! {
+            impl Repo for DatabaseRepository {
+            }
+        };
+
+        let syntax_tree: Item = syn::parse2(code).unwrap();
+        let mut validator = Validator::new();
+
+        validator.visit_item(&syntax_tree);
+        assert!(validator.error.is_none());
     }
 }
