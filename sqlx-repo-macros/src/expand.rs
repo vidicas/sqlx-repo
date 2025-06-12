@@ -1,11 +1,10 @@
 use proc_macro::TokenStream;
 use syn::{
-    WhereClause, parse_quote,
-    visit_mut::{self, VisitMut},
+    parse_quote, parse_quote_spanned, visit_mut::{self, VisitMut}, Token, WhereClause
 };
 
 struct Expander {
-    trait_name: Option<syn::Path>,
+    trait_name: Option<proc_macro2::Ident>,
     signatures: Vec<syn::Signature>,
 }
 
@@ -54,6 +53,51 @@ impl Expander {
             D::Connection: ::sqlx::migrate::Migrate,
         }
     }
+
+    fn visit_func(&mut self, func: &mut syn::ImplItemFn) {
+        // if function is not async, leave it as it is
+        if func.sig.asyncness.take().is_none() {
+            self.signatures.push(func.sig.clone());
+            return;
+        }
+
+        // collect lifetimes from inputs
+        let lifetimes = func
+            .sig
+            .inputs
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
+            .collect::<Vec<_>>();
+
+        // rewrite return to BoxedFuture
+
+        // rewrite function block into pinned box
+
+        // rewrite function bounds
+    }
+
+    fn visit_function_arg(&mut self, pos: usize, arg: &mut syn::FnArg) -> Option<syn::Lifetime> {
+        let lifetime = match arg {
+            syn::FnArg::Receiver(receiver) => {
+                match receiver.reference {
+                    None => return None,
+                    Some((and_token, None)) => {
+                        let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
+                            .expect("failed to parse lifetime");
+                        receiver.reference = Some((and_token, Some(lifetime.clone())));
+                        lifetime
+                    },
+                    Some((_, Some(ref lifetime))) => lifetime.clone(),
+                }
+            },
+            syn::FnArg::Typed(typed) => {
+                println!("typed: {typed:?}");
+                unimplemented!()
+            }
+        };
+        Some(lifetime)
+    }
 }
 
 impl VisitMut for Expander {
@@ -62,10 +106,9 @@ impl VisitMut for Expander {
         fn type_param<T: syn::parse::Parse>(param: &str) -> T {
             match syn::parse_str(param) {
                 Ok(value) => value,
-                Err(e) => unreachable!(
-                    "failed to parse type parameter in item implementation: {}",
-                    e
-                ),
+                Err(e) => {
+                    unreachable!("failed to parse type parameter in item implementation: {e}")
+                }
             }
         }
 
@@ -88,19 +131,19 @@ impl VisitMut for Expander {
         visit_mut::visit_item_impl_mut(self, i)
     }
 
-    fn visit_item_trait_mut(&mut self, i: &mut syn::ItemTrait) {
-        println!("item_trait_mut: {i:?}");
-        visit_mut::visit_item_trait_mut(self, i);
-    }
-
-    fn visit_type_impl_trait_mut(&mut self, i: &mut syn::TypeImplTrait) {
-        println!("type_impl_trait: {i:?}");
-        visit_mut::visit_type_impl_trait_mut(self, i);
+    fn visit_ident_mut(&mut self, i: &mut proc_macro2::Ident) {
+        // first visit happens in trait name, which is stored for future use
+        if self.trait_name.is_none() {
+            self.trait_name = Some(i.clone())
+        }
+        visit_mut::visit_ident_mut(self, i)
     }
 
     // visit functions
     fn visit_impl_item_mut(&mut self, i: &mut syn::ImplItem) {
-        println!("impl_item: {i:?}");
+        if let syn::ImplItem::Fn(func) = i {
+            self.visit_func(func);
+        }
         visit_mut::visit_impl_item_mut(self, i);
     }
 }
@@ -125,9 +168,16 @@ mod test {
     }
 
     #[test]
-    fn test_basic_expand() {
+    fn test_expand() {
         let code = quote! {
             impl Repo for DatabaseRepo<D> {
+                async fn elided_lifetime_on_receiver(&self) -> Result<()> {
+                    Ok(())
+                }
+                
+                async fn explicit_lifetime_on_receiver<'a>(&'a self) -> Result<()> {
+                    Ok(())
+                }
             }
         };
 
@@ -135,7 +185,7 @@ mod test {
         let mut expander = Expander::new();
 
         expander.visit_item_mut(&mut syntax_tree);
-        //println!("{}", prettify(syntax_tree.clone()));
+        println!("{}", prettify(syntax_tree.clone()));
         assert_eq!(
             prettify(syntax_tree),
             "\
@@ -179,7 +229,14 @@ where
     >: std::ops::DerefMut<Target = <D as ::sqlx::Database>::Connection>,
     for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
     D::Connection: ::sqlx::migrate::Migrate,
-{}
+{
+    fn elided_lifetime_on_receiver(&'life0 self) -> Result<()> {
+        Ok(())
+    }
+    fn explicit_lifetime_on_receiver<'a>(&'a self) -> Result<()> {
+        Ok(())
+    }
+}
 "
         )
     }

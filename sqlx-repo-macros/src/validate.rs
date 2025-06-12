@@ -1,6 +1,10 @@
 use proc_macro2::Span;
 use quote::quote_spanned;
-use syn::{Item, spanned::Spanned, visit::Visit};
+use syn::{
+    Item,
+    spanned::Spanned,
+    visit::{self, Visit},
+};
 
 struct Validator {
     error: Option<ValidatorError>,
@@ -58,19 +62,11 @@ impl Validator {
     fn to_compile_error(&self) -> Option<proc_macro2::TokenStream> {
         self.error.as_ref().map(|err| err.to_compile_error())
     }
-
-    fn valid_ty_name(&self, i: &syn::Item) -> bool {
-        let type_path = match i {
-            syn::Item::Type(type_path) => type_path,
-            _ => return false,
-        };
-        false
-    }
 }
 
 impl Visit<'_> for Validator {
     fn visit_impl_item_type(&mut self, i: &'_ syn::ImplItemType) {
-        self.error = Some(ValidatorError::NoAssocTypesAllowed(i.span()))
+        self.error = Some(ValidatorError::NoAssocTypesAllowed(i.span()));
     }
 
     fn visit_generic_argument(&mut self, i: &syn::GenericArgument) {
@@ -78,25 +74,27 @@ impl Visit<'_> for Validator {
     }
 
     fn visit_where_clause(&mut self, i: &syn::WhereClause) {
-        self.error = Some(ValidatorError::NoWhereClauseAllowed(i.span()))
+        self.error = Some(ValidatorError::NoWhereClauseAllowed(i.span()));
     }
 
     fn visit_ident(&mut self, i: &proc_macro2::Ident) {
         if self.trait_name.is_none() {
             self.trait_name = Some(());
-            return;
+            return visit::visit_ident(self, i);
         }
         if self.type_name.is_none() {
             if *i != "DatabaseRepository" {
-                self.error = Some(ValidatorError::IncorrectImplTypeName(i.span()))
+                self.error = Some(ValidatorError::IncorrectImplTypeName(i.span()));
+                return;
             }
             self.type_name = Some(())
         }
+        visit::visit_ident(self, i)
     }
 
     fn visit_item(&mut self, i: &syn::Item) {
         match i {
-            Item::Impl(i) if i.trait_.is_some() => syn::visit::visit_item_impl(self, i),
+            Item::Impl(i) if i.trait_.is_some() => visit::visit_item_impl(self, i),
             _ => {
                 self.error = Some(ValidatorError::NotTraitImplBlock(i.span()));
             }
