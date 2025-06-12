@@ -292,6 +292,10 @@ mod test {
                     Ok(())
                 }
 
+                async fn bound_without_where<'a, 'b: 'a, T>(&'a self, arg: &'b T) -> Result<()> {
+                    Ok(())
+                }
+
                 fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
                     Ok(())
                 }
@@ -385,6 +389,19 @@ where
     >
     where
         'a: 'b,
+        a: 'future_lifetime,
+        b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn bound_without_where<'a, 'b: 'a, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
         a: 'future_lifetime,
         b: 'future_lifetime,
         T: 'future_lifetime,
