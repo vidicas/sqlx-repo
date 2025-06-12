@@ -1,11 +1,19 @@
 use proc_macro::TokenStream;
+use quote::ToTokens as _;
 use syn::{
-    parse_quote, parse_quote_spanned, visit_mut::{self, VisitMut}, Token, WhereClause
+    Token, WhereClause, parse_quote, parse_quote_spanned,
+    spanned::Spanned as _,
+    visit_mut::{self, VisitMut},
 };
 
 struct Expander {
     trait_name: Option<proc_macro2::Ident>,
     signatures: Vec<syn::Signature>,
+}
+
+enum LifetimeType {
+    Preexisted(syn::Lifetime),
+    Generated(syn::Lifetime),
 }
 
 impl Expander {
@@ -61,7 +69,8 @@ impl Expander {
             return;
         }
 
-        // collect lifetimes from inputs
+        // rewrite function arguments with explicit lifetimes, collect all existing lifetimes
+        // for signature transformation
         let lifetimes = func
             .sig
             .inputs
@@ -70,34 +79,72 @@ impl Expander {
             .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
             .collect::<Vec<_>>();
 
-        // rewrite return to BoxedFuture
+        // rewrite function signature
+        self.visit_func_signature(&mut func.sig, lifetimes.as_slice());
 
         // rewrite function block into pinned box
-
-        // rewrite function bounds
+        self.visit_func_block(&mut func.block);
     }
 
-    fn visit_function_arg(&mut self, pos: usize, arg: &mut syn::FnArg) -> Option<syn::Lifetime> {
-        let lifetime = match arg {
-            syn::FnArg::Receiver(receiver) => {
-                match receiver.reference {
-                    None => return None,
-                    Some((and_token, None)) => {
-                        let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
-                            .expect("failed to parse lifetime");
-                        receiver.reference = Some((and_token, Some(lifetime.clone())));
-                        lifetime
-                    },
-                    Some((_, Some(ref lifetime))) => lifetime.clone(),
+    // rewrite function argument lifetimes, collect all lifetimes
+    fn visit_function_arg(&mut self, pos: usize, arg: &mut syn::FnArg) -> Option<LifetimeType> {
+        match arg {
+            syn::FnArg::Receiver(receiver) => match receiver.reference {
+                None => None,
+                Some((and_token, None)) => {
+                    let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
+                        .expect("failed to parse lifetime");
+                    receiver.reference = Some((and_token, Some(lifetime.clone())));
+                    Some(LifetimeType::Generated(lifetime))
                 }
+                Some((_, Some(ref lifetime))) => Some(LifetimeType::Preexisted(lifetime.clone())),
             },
             syn::FnArg::Typed(typed) => {
-                println!("typed: {typed:?}");
-                unimplemented!()
+                match &mut *typed.ty  {
+                    syn::Type::Reference(rf) => {
+                        match rf.lifetime.as_mut() {
+                            Some(lf) => Some(LifetimeType::Preexisted(lf.clone())),
+                            None => {
+                                let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
+                                    .expect("failed to parse lifetime");
+                                rf.lifetime = Some(lifetime.clone());
+                                Some(LifetimeType::Generated(lifetime))
+                            }
+                        }
+                    },
+                    _ => None
+                }
+            }
+        }
+    }
+
+    // rewrite function signature
+    // return type will be boxed future
+    // where clause will be extended with bounds
+    fn visit_func_signature(
+        &mut self,
+        func_signature: &mut syn::Signature,
+        lifetimes: &[LifetimeType],
+    ) {
+        // update return type
+        let output_span = func_signature.output.span();
+        let output: syn::Type = match &func_signature.output {
+            syn::ReturnType::Default => parse_quote_spanned! {
+                output_span => std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'future_lifetime>>
+            },
+            syn::ReturnType::Type(_, ty) => {
+                let tokens = ty.to_token_stream();
+                parse_quote_spanned! {
+                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = #tokens> + Send + 'future_lifetime>>
+                }
             }
         };
-        Some(lifetime)
+        func_signature.output = syn::ReturnType::Type(Token![->](output_span), Box::new(output));
+
+        // update function generics with
     }
+
+    fn visit_func_block(&mut self, func_block: &mut syn::Block) {}
 }
 
 impl VisitMut for Expander {
@@ -171,11 +218,19 @@ mod test {
     fn test_expand() {
         let code = quote! {
             impl Repo for DatabaseRepo<D> {
-                async fn elided_lifetime_on_receiver(&self) -> Result<()> {
+                async fn elided_lifetime_on_receiver(&self, arg: &()) -> Result<()> {
                     Ok(())
                 }
-                
-                async fn explicit_lifetime_on_receiver<'a>(&'a self) -> Result<()> {
+
+                async fn explicit_lifetime_on_receiver<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
+                    Ok(())
+                }
+
+                fn non_async_elided(&self, arg: &()) -> Result<()> {
+                    Ok(())
+                }
+
+                fn non_async_explicit<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
                     Ok(())
                 }
             }
@@ -230,10 +285,26 @@ where
     for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
     D::Connection: ::sqlx::migrate::Migrate,
 {
-    fn elided_lifetime_on_receiver(&'life0 self) -> Result<()> {
+    fn elided_lifetime_on_receiver(
+        &'life0 self,
+        arg: &'life1 (),
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    > {
         Ok(())
     }
-    fn explicit_lifetime_on_receiver<'a>(&'a self) -> Result<()> {
+    fn explicit_lifetime_on_receiver<'a, 'b>(
+        &'a self,
+        arg: &'b (),
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    > {
+        Ok(())
+    }
+    fn non_async_elided(&self, arg: &()) -> Result<()> {
+        Ok(())
+    }
+    fn non_async_explicit<'a, 'b>(&'a self, arg: &'b ()) -> Result<()> {
         Ok(())
     }
 }
