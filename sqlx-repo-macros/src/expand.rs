@@ -1,0 +1,562 @@
+use quote::ToTokens as _;
+use syn::{
+    Token, WhereClause, parse_quote, parse_quote_spanned,
+    spanned::Spanned as _,
+    visit_mut::{self, VisitMut},
+};
+
+struct Expander {
+    trait_name: Option<syn::Ident>,
+    signatures: Vec<syn::Signature>,
+}
+
+impl Expander {
+    fn new() -> Self {
+        Self {
+            trait_name: None,
+            signatures: vec![],
+        }
+    }
+
+    fn where_clause(&self) -> WhereClause {
+        parse_quote! (
+            where D: ::sqlx::Database + ::sqlx_repo::SqlxDBNum,
+            // Types, that Database should support
+            for<'e> i8: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> i16: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> i32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> i64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> f32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> f64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> String: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> &'e str: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> Vec<u8>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> uuid::Uuid: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> ::sqlx::types::Json<serde_json::Value>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> chrono::DateTime<chrono::Utc>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> chrono::NaiveDateTime: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> serde_json::Value: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+
+            // col access through usize index
+            usize: ::sqlx::ColumnIndex<D::Row>,
+
+            // ::sqlx bounds
+            for<'e> &'e mut <D as ::sqlx::Database>::Connection: ::sqlx::Executor<'e, Database = D>,
+            for<'e> &'e ::sqlx::Pool<D>: ::sqlx::Executor<'e, Database = D>,
+            //for<'q> <D as ::sqlx::database::HasArguments<'q>>::Arguments: IntoArguments<'q, D>,
+            D::QueryResult: std::fmt::Debug,
+
+            // Database transactions should be deref-able into database connection
+            for<'e> ::sqlx::Transaction<'e, D>: std::ops::Deref<Target = <D as ::sqlx::Database>::Connection>,
+            for<'e> ::sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as ::sqlx::Database>::Connection>,
+            for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
+
+            // db connection should be able to run migrations
+            D::Connection: ::sqlx::migrate::Migrate,
+        )
+    }
+
+    fn visit_func(&mut self, func: &mut syn::ImplItemFn) {
+        // if function is not async, leave it as it is
+        if func.sig.asyncness.take().is_none() {
+            self.signatures.push(func.sig.clone());
+            return;
+        }
+
+        // rewrite function arguments with explicit lifetimes, collect all existing lifetimes
+        // for signature transformation
+        let mut lifetimes = func
+            .sig
+            .inputs
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
+            .collect::<Vec<_>>();
+
+        // add additional lifetime to lifetimes which will be used for return type in future bound
+        lifetimes
+            .push(syn::parse_str("'future_lifetime").expect("failed to parse future lifetime"));
+
+        // rewrite function signature
+        self.visit_func_signature(&mut func.sig, lifetimes.as_slice());
+
+        // rewrite function block into pinned box
+        self.visit_func_block(&mut func.block);
+    }
+
+    // rewrite function argument lifetimes, collect all lifetimes
+    fn visit_function_arg(&mut self, pos: usize, arg: &mut syn::FnArg) -> Option<syn::Lifetime> {
+        match arg {
+            syn::FnArg::Receiver(receiver) => match receiver.reference {
+                Some((and_token, None)) => {
+                    let lifetime: syn::Lifetime =
+                        syn::parse_str(&format!("'life{pos}")).expect("failed to parse lifetime");
+                    receiver.reference = Some((and_token, Some(lifetime.clone())));
+                    Some(lifetime)
+                }
+                _ => None,
+            },
+            syn::FnArg::Typed(typed) => match &mut *typed.ty {
+                syn::Type::Reference(rf) => match rf.lifetime {
+                    Some(_) => None,
+                    None => {
+                        let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
+                            .expect("failed to parse lifetime");
+                        rf.lifetime = Some(lifetime.clone());
+                        Some(lifetime)
+                    }
+                },
+                _ => None,
+            },
+        }
+    }
+
+    // rewrite function signature
+    // return type will be boxed future
+    // where clause will be extended with bounds
+    fn visit_func_signature(
+        &mut self,
+        func_signature: &mut syn::Signature,
+        lifetimes: &[syn::Lifetime],
+    ) {
+        // update return type
+        let output_span = func_signature.output.span();
+        let output: syn::Type = match &func_signature.output {
+            syn::ReturnType::Default => {
+                parse_quote_spanned! (
+                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'future_lifetime>>
+                )
+            }
+            syn::ReturnType::Type(_, ty) => {
+                parse_quote_spanned! (
+                    output_span => std::pin::Pin<Box<dyn std::future::Future<Output = #ty> + Send + 'future_lifetime>>
+                )
+            }
+        };
+        func_signature.output = syn::ReturnType::Type(Token![->](output_span), Box::new(output));
+
+        // update function generics with
+        let mut type_generics = vec![];
+        while matches!(
+            func_signature.generics.params.last(),
+            Some(syn::GenericParam::Type(_))
+        ) {
+            type_generics.push(func_signature.generics.params.pop().unwrap().into_tuple().0);
+        }
+
+        for lifetime in lifetimes {
+            func_signature
+                .generics
+                .params
+                .push(syn::GenericParam::Lifetime(parse_quote!(#lifetime)));
+        }
+
+        while let Some(type_generic) = type_generics.pop() {
+            func_signature.generics.params.push(type_generic);
+        }
+
+        // for each generic parameter specify 'future_lifetime as a superclass
+
+        // ensure a where clause exists
+        if func_signature.generics.where_clause.is_none() {
+            func_signature.generics.where_clause = Some(syn::WhereClause {
+                where_token: Default::default(),
+                predicates: syn::punctuated::Punctuated::new(),
+            });
+        }
+
+        // add bounds to all generics
+        if let Some(where_clause) = &mut func_signature.generics.where_clause {
+            for param in func_signature.generics.params.iter() {
+                let (ident, param) = match param {
+                    syn::GenericParam::Type(param) => {
+                        let ident = &param.ident;
+                        (ident, quote::quote!(#ident))
+                    }
+                    syn::GenericParam::Lifetime(lt) => {
+                        let ident = &lt.lifetime.ident;
+                        let lifetime = &lt.lifetime;
+                        (ident, quote::quote!(#lifetime))
+                    }
+                    _ => unreachable!("only type and lifetimes supported as generics"),
+                };
+                if *ident == "future_lifetime" {
+                    continue;
+                }
+                where_clause
+                    .predicates
+                    .push(parse_quote!(#param: 'future_lifetime));
+            }
+        }
+
+        // store function signature for trait generation
+        self.signatures.push(func_signature.clone());
+    }
+
+    fn visit_func_block(&mut self, func_block: &mut syn::Block) {
+        let tokens = func_block.to_token_stream();
+        *func_block = parse_quote_spanned!(func_block.span() => {
+            Box::pin(async move #tokens)
+        });
+    }
+
+    fn generate_trait_implementation(
+        &self,
+        attributes: proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        let trait_name = self
+            .trait_name
+            .as_ref()
+            .expect("expander was not able to extract trait name");
+        let func_signatures = &self.signatures;
+        quote::quote! (
+            pub trait #trait_name: #attributes {
+                #(#func_signatures;)*
+            }
+        )
+    }
+
+    fn generate_trait_constuctor(&self) -> proc_macro2::TokenStream {
+        let trait_name = &self
+            .trait_name
+            .as_ref()
+            .expect("expander was not able to extract trait name");
+        quote::quote! (
+            impl dyn #trait_name {
+                pub async fn new(database_url: &str) ->
+                    Result<Box<dyn #trait_name>, Box<dyn std::error::Error + Send + Sync + 'static>>
+                {
+                    let mut database_url = url::Url::parse(database_url)?;
+                    let mut params: std::collections::HashMap<std::borrow::Cow<str>, std::borrow::Cow<str>> = database_url.query_pairs().collect();
+                    let db: Box<dyn #trait_name> = match database_url.scheme() {
+                        "sqlite" => {
+                            if !params.contains_key("mode") {
+                                params.insert("mode".into(), "rwc".into());
+                            };
+                            let query = params
+                                .into_iter()
+                                .map(|(key, value)| format!("{key}={value}"))
+                                .collect::<Vec<_>>()
+                                .join("&");
+                            database_url.set_query(Some(&query));
+                            Box::new(
+                                DatabaseRepository::<sqlx::Sqlite>::new(
+                                    database_url.as_ref(),
+                                )
+                                .await?,
+                            )
+                        }
+                        "postgres" => Box::new(
+                            DatabaseRepository::<sqlx::Postgres>::new(
+                                database_url.as_ref(),
+                            )
+                            .await?,
+                        ),
+                        "mysql" => Box::new(
+                            DatabaseRepository::<sqlx::MySql>::new(
+                                database_url.as_ref(),
+                            )
+                            .await?,
+                        ),
+                        unsupported => Err(format!("unsupported database: {unsupported}"))?,
+                    };
+                    Ok(db)
+                }
+            }
+        )
+    }
+}
+
+impl VisitMut for Expander {
+    // impl Trait for DatabaseRepository
+    fn visit_item_impl_mut(&mut self, i: &mut syn::ItemImpl) {
+        fn type_param<T: syn::parse::Parse>(param: &str) -> T {
+            match syn::parse_str(param) {
+                Ok(value) => value,
+                Err(e) => {
+                    unreachable!("failed to parse type parameter in item implementation: {e}")
+                }
+            }
+        }
+
+        // store trait name for future use
+        self.trait_name = Some(
+            i.trait_
+                .as_ref()
+                .expect("no trait name available")
+                .1
+                .get_ident()
+                .expect("failed to extract trait name")
+                .clone(),
+        );
+
+        // append <D> after impl
+        i.generics
+            .params
+            .push(syn::GenericParam::Type(type_param("D")));
+
+        // append <D> after DatabaseRepository
+        match &mut *i.self_ty {
+            syn::Type::Path(path) => {
+                let path_segment = path.path.segments.first_mut().unwrap();
+                path_segment.arguments = syn::PathArguments::AngleBracketed(type_param("<D>"))
+            }
+            _ => unreachable!("DatabaseRepository type path is missing"),
+        };
+
+        // set where clause
+        i.generics.where_clause = Some(self.where_clause());
+        visit_mut::visit_item_impl_mut(self, i)
+    }
+
+    // visit functions
+    fn visit_impl_item_mut(&mut self, i: &mut syn::ImplItem) {
+        if let syn::ImplItem::Fn(func) = i {
+            self.visit_func(func);
+        }
+        visit_mut::visit_impl_item_mut(self, i);
+    }
+}
+
+pub fn expand(
+    attrs: proc_macro2::TokenStream,
+    item: &mut syn::Item,
+) -> (
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+    proc_macro2::TokenStream,
+) {
+    let mut expander = Expander::new();
+    expander.visit_item_mut(item);
+    (
+        item.to_token_stream(),
+        expander.generate_trait_implementation(attrs),
+        expander.generate_trait_constuctor(),
+    )
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use quote::quote;
+
+    fn prettify(item: syn::Item) -> String {
+        let file = syn::File {
+            shebang: None,
+            attrs: vec![],
+            items: vec![item],
+        };
+        prettyplease::unparse(&file)
+    }
+
+    #[test]
+    fn test_expand() {
+        let code = quote! (
+            impl Repo for DatabaseRepo<D> {
+                async fn elided_lifetime_on_receiver<T>(&self, arg: &T) -> Result<()> {
+                    Ok(())
+                }
+
+                async fn explicit_lifetime_on_receiver<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
+                    Ok(())
+                }
+
+                async fn with_where_clause<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()>
+                    where 'a: 'b
+                {
+                    Ok(())
+                }
+
+                async fn bound_without_where<'a, 'b: 'a, T>(&'a self, arg: &'b T) -> Result<()> {
+                    Ok(())
+                }
+
+                fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
+                    Ok(())
+                }
+
+                fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
+                    Ok(())
+                }
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let mut expander = Expander::new();
+
+        expander.visit_item_mut(&mut syntax_tree);
+
+        let pretty_syntax_tree = prettify(syntax_tree);
+        //println!("{pretty_syntax_tree}");
+        let expected = "\
+impl<D> Repo for DatabaseRepo<D>
+where
+    D: ::sqlx::Database + ::sqlx_repo::SqlxDBNum,
+    for<'e> i8: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> i16: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> i32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> i64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> f32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> f64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> String: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> &'e str: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> Vec<u8>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> uuid::Uuid: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> ::sqlx::types::Json<
+        serde_json::Value,
+    >: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> chrono::DateTime<
+        chrono::Utc,
+    >: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    for<'e> chrono::NaiveDateTime: ::sqlx::Type<D> + ::sqlx::Encode<'e, D>
+        + ::sqlx::Decode<'e, D>,
+    for<'e> serde_json::Value: ::sqlx::Type<D> + ::sqlx::Encode<'e, D>
+        + ::sqlx::Decode<'e, D>,
+    usize: ::sqlx::ColumnIndex<D::Row>,
+    for<'e> &'e mut <D as ::sqlx::Database>::Connection: ::sqlx::Executor<
+        'e,
+        Database = D,
+    >,
+    for<'e> &'e ::sqlx::Pool<D>: ::sqlx::Executor<'e, Database = D>,
+    D::QueryResult: std::fmt::Debug,
+    for<'e> ::sqlx::Transaction<
+        'e,
+        D,
+    >: std::ops::Deref<Target = <D as ::sqlx::Database>::Connection>,
+    for<'e> ::sqlx::Transaction<
+        'e,
+        D,
+    >: std::ops::DerefMut<Target = <D as ::sqlx::Database>::Connection>,
+    for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
+    D::Connection: ::sqlx::migrate::Migrate,
+{
+    fn elided_lifetime_on_receiver<'life0, 'life1, 'future_lifetime, T>(
+        &'life0 self,
+        arg: &'life1 T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn explicit_lifetime_on_receiver<'a, 'b, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn with_where_clause<'a, 'b, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'b,
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn bound_without_where<'a, 'b: 'a, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn non_async_elided<T>(&self, arg: &T) -> Result<()> {
+        Ok(())
+    }
+    fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
+        Ok(())
+    }
+}
+";
+
+        assert!(
+            pretty_syntax_tree == expected,
+            "got:\n{}\nexpected:\n{}\n",
+            pretty_syntax_tree,
+            expected
+        );
+
+        let expected = "\
+pub trait Repo {
+    fn elided_lifetime_on_receiver<'life0, 'life1, 'future_lifetime, T>(
+        &'life0 self,
+        arg: &'life1 T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+        T: 'future_lifetime;
+    fn explicit_lifetime_on_receiver<'a, 'b, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime;
+    fn with_where_clause<'a, 'b, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'b,
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime;
+    fn bound_without_where<'a, 'b: 'a, 'future_lifetime, T>(
+        &'a self,
+        arg: &'b T,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        T: 'future_lifetime;
+    fn non_async_elided<T>(&self, arg: &T) -> Result<()>;
+    fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()>;
+}
+";
+
+        let trait_impl: syn::Item =
+            syn::parse2(expander.generate_trait_implementation(proc_macro2::TokenStream::new()))
+                .unwrap();
+        let generated_trait = prettify(trait_impl);
+        //println!("{generated_trait}");
+        assert!(
+            generated_trait == expected,
+            "got:\n{}\nexpected:\n{}\n",
+            generated_trait,
+            expected
+        );
+    }
+}
