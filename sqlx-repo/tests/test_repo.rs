@@ -75,12 +75,12 @@ impl ShouldCompile for DatabaseRepository {
         Ok(())
     }
 
-    //async fn optional_type(&self, i: Option<&str>) -> Result<()> {
-    //    let query = query!("insert into test values (?)");
-    //    sqlx::query(query)
-    //        .bind(i)
-    //        .execute(&self.pool)
-    //        .await?;
-    //    Ok(())
-    //}
+    async fn optional_type_with_lifetime(&self, i: Option<&str>) -> Result<()> {
+        let query = query!("insert into test values (?)");
+        sqlx::query(query)
+            .bind(i)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }

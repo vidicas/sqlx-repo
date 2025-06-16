@@ -160,9 +160,11 @@ impl Expander {
             .sig
             .inputs
             .iter_mut()
-            .enumerate()
-            .filter_map(|(pos, arg)| self.visit_function_arg(pos, arg))
-            .collect::<Vec<_>>();
+            .fold((&mut 0, vec![]), |(pos, mut acc), arg| {
+                self.visit_function_arg(pos, arg, &mut acc);
+                (pos, acc)
+            })
+            .1;
 
         // add additional lifetime to lifetimes which will be used for return type in future bound
         lifetimes
@@ -175,30 +177,60 @@ impl Expander {
         self.visit_func_block(&mut func.block);
     }
 
+    fn get_lifetime(pos: &mut usize) -> syn::Lifetime {
+        let lifetime: syn::Lifetime =
+            syn::parse_str(&format!("'life{pos}")).expect("failed to parse lifetime");
+        *pos += 1;
+        lifetime
+    }
+
     // rewrite function argument lifetimes, collect all lifetimes
-    fn visit_function_arg(&mut self, pos: usize, arg: &mut syn::FnArg) -> Option<syn::Lifetime> {
+    fn visit_function_arg(
+        &mut self,
+        pos: &mut usize,
+        arg: &mut syn::FnArg,
+        acc: &mut Vec<syn::Lifetime>,
+    ) {
         match arg {
-            syn::FnArg::Receiver(receiver) => match receiver.reference {
-                Some((and_token, None)) => {
-                    let lifetime: syn::Lifetime =
-                        syn::parse_str(&format!("'life{pos}")).expect("failed to parse lifetime");
+            syn::FnArg::Receiver(receiver) => {
+                if let Some((and_token, None)) = receiver.reference {
+                    let lifetime = Self::get_lifetime(pos);
                     receiver.reference = Some((and_token, Some(lifetime.clone())));
-                    Some(lifetime)
+                    acc.push(lifetime);
                 }
-                _ => None,
-            },
-            syn::FnArg::Typed(typed) => match &mut *typed.ty {
-                syn::Type::Reference(rf) => match rf.lifetime {
-                    Some(_) => None,
-                    None => {
-                        let lifetime: syn::Lifetime = syn::parse_str(&format!("'life{pos}"))
-                            .expect("failed to parse lifetime");
-                        rf.lifetime = Some(lifetime.clone());
-                        Some(lifetime)
+            }
+            syn::FnArg::Typed(typed) => self.visit_type(pos, &mut typed.ty, acc),
+        }
+    }
+
+    fn visit_type(&mut self, pos: &mut usize, ty: &mut syn::Type, acc: &mut Vec<syn::Lifetime>) {
+        match ty {
+            syn::Type::Reference(rf) => {
+                if rf.lifetime.is_none() {
+                    let lifetime = Self::get_lifetime(pos);
+                    rf.lifetime = Some(lifetime.clone());
+                    acc.push(lifetime);
+                }
+            }
+            syn::Type::Path(path) => self.visit_path(pos, &mut path.path, acc),
+            syn::Type::Tuple(tuple) => {
+                for ty in tuple.elems.iter_mut() {
+                    self.visit_type(pos, ty, acc);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn visit_path(&mut self, pos: &mut usize, path: &mut syn::Path, acc: &mut Vec<syn::Lifetime>) {
+        for segment in path.segments.iter_mut() {
+            if let syn::PathArguments::AngleBracketed(params) = &mut segment.arguments {
+                for arg in params.args.iter_mut() {
+                    if let syn::GenericArgument::Type(ty) = arg {
+                        self.visit_type(pos, ty, acc)
                     }
-                },
-                _ => None,
-            },
+                }
+            }
         }
     }
 
@@ -508,6 +540,17 @@ mod test {
                 fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
                     Ok(())
                 }
+
+                async fn nested_lifetime(&self, arg: Option<&str>) -> Result<()> {
+                    Ok(())
+                }
+
+                async fn nested_nested_lifetime(&self, arg: Option<Option<&str>>) -> Result<()> {
+                    Ok(())
+                }
+                async fn nested_multiple<'a, 'b>(&self, arg: Result<(&'a str, &str), (&str, Option<(&'b str, &str)>)>) -> Result<()> {
+                    Ok(())
+                }
             }
         );
 
@@ -660,6 +703,49 @@ where
     fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()> {
         Ok(())
     }
+    fn nested_lifetime<'life0, 'life1, 'future_lifetime>(
+        &'life0 self,
+        arg: Option<&'life1 str>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn nested_nested_lifetime<'life0, 'life1, 'future_lifetime>(
+        &'life0 self,
+        arg: Option<Option<&'life1 str>>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
+    fn nested_multiple<'a, 'b, 'life0, 'life1, 'life2, 'life3, 'future_lifetime>(
+        &'life0 self,
+        arg: Result<
+            (&'a str, &'life1 str),
+            (&'life2 str, Option<(&'b str, &'life3 str)>),
+        >,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+        'life2: 'future_lifetime,
+        'life3: 'future_lifetime,
+    {
+        Box::pin(async move { Ok(()) })
+    }
 }
 ";
 
@@ -715,11 +801,44 @@ pub trait Repo {
         T: 'future_lifetime;
     fn non_async_elided<T>(&self, arg: &T) -> Result<()>;
     fn non_async_explicit<'a, 'b, T>(&'a self, arg: &'b T) -> Result<()>;
+    fn nested_lifetime<'life0, 'life1, 'future_lifetime>(
+        &'life0 self,
+        arg: Option<&'life1 str>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime;
+    fn nested_nested_lifetime<'life0, 'life1, 'future_lifetime>(
+        &'life0 self,
+        arg: Option<Option<&'life1 str>>,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime;
+    fn nested_multiple<'a, 'b, 'life0, 'life1, 'life2, 'life3, 'future_lifetime>(
+        &'life0 self,
+        arg: Result<
+            (&'a str, &'life1 str),
+            (&'life2 str, Option<(&'b str, &'life3 str)>),
+        >,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<()>> + Send + 'future_lifetime>,
+    >
+    where
+        'a: 'future_lifetime,
+        'b: 'future_lifetime,
+        'life0: 'future_lifetime,
+        'life1: 'future_lifetime,
+        'life2: 'future_lifetime,
+        'life3: 'future_lifetime;
 }
 ";
 
         let generated_trait = prettify(syn::parse2(trait_impl).unwrap());
-        //println!("{generated_trait}");
         assert!(
             generated_trait == expected,
             "got:\n{}\nexpected:\n{}\n",
