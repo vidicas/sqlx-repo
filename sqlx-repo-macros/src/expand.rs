@@ -1,4 +1,5 @@
-use quote::ToTokens as _;
+use proc_macro2::Span;
+use quote::{ToTokens as _, quote_spanned};
 use syn::{
     Token, WhereClause, parse_quote, parse_quote_spanned,
     spanned::Spanned as _,
@@ -6,13 +7,56 @@ use syn::{
 };
 
 struct Expander {
+    error: Option<ValidationError>,
     trait_name: Option<syn::Ident>,
     signatures: Vec<syn::Signature>,
+}
+
+enum ValidationError {
+    NoGenericsAllowed(Span),
+    NoWhereClauseAllowed(Span),
+    NotTraitImplBlock(Span),
+    NoAssocTypesAllowed(Span),
+    IncorrectImplTypeName(Span),
+    UnsupportedFuncGenericType(Span),
+}
+
+impl ValidationError {
+    fn to_compile_error(&self) -> proc_macro2::TokenStream {
+        let span = self.span();
+        let error = self.error();
+        quote_spanned! (
+            span => compile_error!(#error)
+        )
+    }
+
+    fn span(&self) -> Span {
+        *match self {
+            Self::NoGenericsAllowed(span) => span,
+            Self::NoWhereClauseAllowed(span) => span,
+            Self::NotTraitImplBlock(span) => span,
+            Self::NoAssocTypesAllowed(span) => span,
+            Self::IncorrectImplTypeName(span) => span,
+            Self::UnsupportedFuncGenericType(span) => span,
+        }
+    }
+
+    fn error(&self) -> &'static str {
+        match self {
+            Self::NoGenericsAllowed(_) => "No generics allowed in trait implementation",
+            Self::NoWhereClauseAllowed(_) => "No where clause allowed in trait implementation",
+            Self::NotTraitImplBlock(_) => "Only trait implementation blocks are supported",
+            Self::NoAssocTypesAllowed(_) => "Trait associated types are not supported",
+            Self::IncorrectImplTypeName(_) => "Incorrect type name in trait implementation",
+            Self::UnsupportedFuncGenericType(_) => "only type and lifetimes supported as generics",
+        }
+    }
 }
 
 impl Expander {
     fn new() -> Self {
         Self {
+            error: None,
             trait_name: None,
             signatures: vec![],
         }
@@ -155,9 +199,6 @@ impl Expander {
             func_signature.generics.params.push(type_generic);
         }
 
-        // for each generic parameter specify 'future_lifetime as a superclass
-
-        // ensure a where clause exists
         if func_signature.generics.where_clause.is_none() {
             func_signature.generics.where_clause = Some(syn::WhereClause {
                 where_token: Default::default(),
@@ -165,6 +206,7 @@ impl Expander {
             });
         }
 
+        // for each generic parameter specify 'future_lifetime as a superclass
         // add bounds to all generics
         if let Some(where_clause) = &mut func_signature.generics.where_clause {
             for param in func_signature.generics.params.iter() {
@@ -178,7 +220,11 @@ impl Expander {
                         let lifetime = &lt.lifetime;
                         (ident, quote::quote!(#lifetime))
                     }
-                    _ => unreachable!("only type and lifetimes supported as generics"),
+                    _ => {
+                        self.error =
+                            Some(ValidationError::UnsupportedFuncGenericType(param.span()));
+                        return;
+                    }
                 };
                 if *ident == "future_lifetime" {
                     continue;
@@ -268,6 +314,39 @@ impl Expander {
 }
 
 impl VisitMut for Expander {
+    fn visit_item_mut(&mut self, item: &mut syn::Item) {
+        match item {
+            syn::Item::Impl(i) if !i.generics.params.is_empty() => {
+                self.error = Some(ValidationError::NoGenericsAllowed(i.span()));
+            }
+            syn::Item::Impl(i) if i.generics.where_clause.is_some() => {
+                self.error = Some(ValidationError::NoWhereClauseAllowed(i.span()));
+            }
+            syn::Item::Impl(i)
+                if i.self_ty.to_token_stream().to_string() != "DatabaseRepository" =>
+            {
+                self.error = Some(ValidationError::IncorrectImplTypeName(i.span()))
+            }
+            syn::Item::Impl(i) if i.trait_.is_some() => {
+                let trait_path = &i.trait_.as_ref().unwrap().1;
+                if trait_path.segments.first().unwrap().arguments != syn::PathArguments::None {
+                    self.error = Some(ValidationError::NoGenericsAllowed(i.span()));
+                    return;
+                }
+                let trait_name = trait_path.get_ident();
+                if trait_name.is_none() {
+                    self.error = Some(ValidationError::NotTraitImplBlock(i.span()));
+                    return;
+                }
+                self.trait_name = trait_name.cloned();
+                visit_mut::visit_item_mut(self, item)
+            }
+            _ => {
+                self.error = Some(ValidationError::NotTraitImplBlock(item.span()));
+            }
+        }
+    }
+
     // impl Trait for DatabaseRepository
     fn visit_item_impl_mut(&mut self, i: &mut syn::ItemImpl) {
         fn type_param<T: syn::parse::Parse>(param: &str) -> T {
@@ -278,17 +357,6 @@ impl VisitMut for Expander {
                 }
             }
         }
-
-        // store trait name for future use
-        self.trait_name = Some(
-            i.trait_
-                .as_ref()
-                .expect("no trait name available")
-                .1
-                .get_ident()
-                .expect("failed to extract trait name")
-                .clone(),
-        );
 
         // append <D> after impl
         i.generics
@@ -301,7 +369,10 @@ impl VisitMut for Expander {
                 let path_segment = path.path.segments.first_mut().unwrap();
                 path_segment.arguments = syn::PathArguments::AngleBracketed(type_param("<D>"))
             }
-            _ => unreachable!("DatabaseRepository type path is missing"),
+            _ => {
+                self.error = Some(ValidationError::NotTraitImplBlock(i.span()));
+                return;
+            }
         };
 
         // set where clause
@@ -309,11 +380,16 @@ impl VisitMut for Expander {
         visit_mut::visit_item_impl_mut(self, i)
     }
 
+    fn visit_impl_item_type_mut(&mut self, i: &mut syn::ImplItemType) {
+        self.error = Some(ValidationError::NoAssocTypesAllowed(i.span()));
+    }
+
     // visit functions
     fn visit_impl_item_mut(&mut self, i: &mut syn::ImplItem) {
         if let syn::ImplItem::Fn(func) = i {
-            self.visit_func(func);
+            return self.visit_func(func);
         }
+        // NOTE: do we really need to dive deeper?
         visit_mut::visit_impl_item_mut(self, i);
     }
 }
@@ -321,18 +397,25 @@ impl VisitMut for Expander {
 pub fn expand(
     attrs: proc_macro2::TokenStream,
     item: &mut syn::Item,
-) -> (
+) -> Result<
+    (
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+        proc_macro2::TokenStream,
+    ),
     proc_macro2::TokenStream,
-    proc_macro2::TokenStream,
-    proc_macro2::TokenStream,
-) {
+> {
     let mut expander = Expander::new();
     expander.visit_item_mut(item);
-    (
+
+    if let Some(err) = expander.error.take() {
+        return Err(err.to_compile_error());
+    }
+    Ok((
         item.to_token_stream(),
         expander.generate_trait_implementation(attrs),
         expander.generate_trait_constuctor(),
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -352,7 +435,7 @@ mod test {
     #[test]
     fn test_expand() {
         let code = quote! (
-            impl Repo for DatabaseRepo<D> {
+            impl Repo for DatabaseRepository {
                 async fn elided_lifetime_on_receiver<T>(&self, arg: &T) -> Result<()> {
                     Ok(())
                 }
@@ -382,14 +465,16 @@ mod test {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let mut expander = Expander::new();
 
-        expander.visit_item_mut(&mut syntax_tree);
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
 
-        let pretty_syntax_tree = prettify(syntax_tree);
-        //println!("{pretty_syntax_tree}");
+        assert!(result.is_ok(), "{}", result.unwrap_err().to_string());
+
+        let (expanded_item, trait_impl, _constructor) = result.unwrap();
+
+        let pretty_expanded_item = prettify(syn::parse2(expanded_item).unwrap());
         let expected = "\
-impl<D> Repo for DatabaseRepo<D>
+impl<D> Repo for DatabaseRepository<D>
 where
     D: sqlx::Database + sqlx_repo::SqlxDBNum,
     for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
@@ -489,9 +574,9 @@ where
 ";
 
         assert!(
-            pretty_syntax_tree == expected,
+            pretty_expanded_item == expected,
             "got:\n{}\nexpected:\n{}\n",
-            pretty_syntax_tree,
+            pretty_expanded_item,
             expected
         );
 
@@ -543,10 +628,7 @@ pub trait Repo {
 }
 ";
 
-        let trait_impl: syn::Item =
-            syn::parse2(expander.generate_trait_implementation(proc_macro2::TokenStream::new()))
-                .unwrap();
-        let generated_trait = prettify(trait_impl);
+        let generated_trait = prettify(syn::parse2(trait_impl).unwrap());
         //println!("{generated_trait}");
         assert!(
             generated_trait == expected,
@@ -554,5 +636,112 @@ pub trait Repo {
             generated_trait,
             expected
         );
+    }
+
+    #[test]
+    fn validate_trait_with_generic() {
+        let code = quote! (
+            impl Repo<'a> for DatabaseRepository {
+
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let mut expander = Expander::new();
+
+        expander.visit_item_mut(&mut syntax_tree);
+        assert!(expander.error.is_some());
+        let error = expander.error.take().unwrap();
+        assert_eq!(
+            error.to_compile_error().to_string(),
+            "compile_error ! (\"No generics allowed in trait implementation\")"
+        )
+    }
+
+    #[test]
+    fn validate_type_with_generic() {
+        let code = quote!(
+            impl<D> Repo for DatabaseRepository<D> {}
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "compile_error ! (\"No generics allowed in trait implementation\")"
+        )
+    }
+
+    #[test]
+    fn validate_trait_with_where() {
+        let code = quote! (
+            impl Repo for DatabaseRepository where 'a: 'b {
+
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "compile_error ! (\"No where clause allowed in trait implementation\")"
+        )
+    }
+
+    #[test]
+    fn validate_trait_with_assoc_type() {
+        let code = quote! (
+            impl Repo for DatabaseRepository {
+                type Assoc = ();
+
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "compile_error ! (\"Trait associated types are not supported\")"
+        )
+    }
+
+    #[test]
+    fn validate_not_trait_impl() {
+        let code = quote! (
+            impl DatabaseRepository {
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "compile_error ! (\"Only trait implementation blocks are supported\")"
+        )
+    }
+
+    #[test]
+    fn validate_invalid_type_name() {
+        let code = quote! (
+            impl Repo for DatabaseRepo {
+            }
+        );
+
+        let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
+        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "compile_error ! (\"Incorrect type name in trait implementation\")"
+        )
     }
 }
