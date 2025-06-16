@@ -161,9 +161,7 @@ impl Expander {
             .inputs
             .iter_mut()
             .fold((&mut 0, vec![]), |(pos, mut acc), arg| {
-                if let Some(lifetimes) = self.visit_function_arg(pos, arg) {
-                    acc.extend(lifetimes);
-                }
+                self.visit_function_arg(pos, arg, &mut acc);
                 (pos, acc)
             })
             .1;
@@ -191,58 +189,49 @@ impl Expander {
         &mut self,
         pos: &mut usize,
         arg: &mut syn::FnArg,
-    ) -> Option<Vec<syn::Lifetime>> {
+        acc: &mut Vec<syn::Lifetime>,
+    ) {
         match arg {
-            syn::FnArg::Receiver(receiver) => match receiver.reference {
-                Some((and_token, None)) => {
+            syn::FnArg::Receiver(receiver) => {
+                if let Some((and_token, None)) = receiver.reference {
                     let lifetime = Self::get_lifetime(pos);
                     receiver.reference = Some((and_token, Some(lifetime.clone())));
-                    Some(vec![lifetime])
+                    acc.push(lifetime);
                 }
-                _ => None,
-            },
-            syn::FnArg::Typed(typed) => self.visit_type(pos, &mut typed.ty),
+            }
+            syn::FnArg::Typed(typed) => self.visit_type(pos, &mut typed.ty, acc),
         }
     }
 
-    fn visit_type(&mut self, pos: &mut usize, ty: &mut syn::Type) -> Option<Vec<syn::Lifetime>> {
+    fn visit_type(&mut self, pos: &mut usize, ty: &mut syn::Type, acc: &mut Vec<syn::Lifetime>) {
         match ty {
-            syn::Type::Reference(rf) => match rf.lifetime {
-                Some(_) => None,
-                None => {
+            syn::Type::Reference(rf) => {
+                if rf.lifetime.is_none() {
                     let lifetime = Self::get_lifetime(pos);
                     rf.lifetime = Some(lifetime.clone());
-                    Some(vec![lifetime])
+                    acc.push(lifetime);
                 }
-            },
-            syn::Type::Path(path) => self.visit_path(pos, &mut path.path),
-            syn::Type::Tuple(tuple) => {
-                let mut lifetimes = vec![];
-                for ty in tuple.elems.iter_mut() {
-                    if let Some(lfs) = self.visit_type(pos, ty) {
-                        lifetimes.extend(lfs)
-                    }
-                }
-                Some(lifetimes)
             }
-            _ => None,
+            syn::Type::Path(path) => self.visit_path(pos, &mut path.path, acc),
+            syn::Type::Tuple(tuple) => {
+                for ty in tuple.elems.iter_mut() {
+                    self.visit_type(pos, ty, acc);
+                }
+            }
+            _ => (),
         }
     }
 
-    fn visit_path(&mut self, pos: &mut usize, path: &mut syn::Path) -> Option<Vec<syn::Lifetime>> {
-        let mut lifetimes = vec![];
+    fn visit_path(&mut self, pos: &mut usize, path: &mut syn::Path, acc: &mut Vec<syn::Lifetime>) {
         for segment in path.segments.iter_mut() {
             if let syn::PathArguments::AngleBracketed(params) = &mut segment.arguments {
                 for arg in params.args.iter_mut() {
                     if let syn::GenericArgument::Type(ty) = arg {
-                        if let Some(lfs) = self.visit_type(pos, ty) {
-                            lifetimes.extend(lfs)
-                        }
+                        self.visit_type(pos, ty, acc)
                     }
                 }
             }
         }
-        Some(lifetimes)
     }
 
     // rewrite function signature
