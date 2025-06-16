@@ -20,39 +20,39 @@ impl Expander {
 
     fn where_clause(&self) -> WhereClause {
         parse_quote! (
-            where D: ::sqlx::Database + ::sqlx_repo::SqlxDBNum,
+            where D: sqlx::Database + sqlx_repo::SqlxDBNum,
             // Types, that Database should support
-            for<'e> i8: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> i16: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> i32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> i64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> f32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> f64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> String: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> &'e str: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> Vec<u8>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> uuid::Uuid: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> ::sqlx::types::Json<serde_json::Value>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> chrono::DateTime<chrono::Utc>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> chrono::NaiveDateTime: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-            for<'e> serde_json::Value: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+            for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> i32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> i64: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> f32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> f64: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> String: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> &'e str: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> Vec<u8>: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> uuid::Uuid: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> sqlx::types::Json<serde_json::Value>: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> chrono::DateTime<chrono::Utc>: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> chrono::NaiveDateTime: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+            for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
 
             // col access through usize index
-            usize: ::sqlx::ColumnIndex<D::Row>,
+            usize: sqlx::ColumnIndex<D::Row>,
 
-            // ::sqlx bounds
-            for<'e> &'e mut <D as ::sqlx::Database>::Connection: ::sqlx::Executor<'e, Database = D>,
-            for<'e> &'e ::sqlx::Pool<D>: ::sqlx::Executor<'e, Database = D>,
-            //for<'q> <D as ::sqlx::database::HasArguments<'q>>::Arguments: IntoArguments<'q, D>,
+            // sqlx bounds
+            for<'e> &'e mut <D as sqlx::Database>::Connection: sqlx::Executor<'e, Database = D>,
+            for<'e> &'e sqlx::Pool<D>: sqlx::Executor<'e, Database = D>,
+            //for<'q> <D as sqlx::database::HasArguments<'q>>::Arguments: IntoArguments<'q, D>,
             D::QueryResult: std::fmt::Debug,
 
             // Database transactions should be deref-able into database connection
-            for<'e> ::sqlx::Transaction<'e, D>: std::ops::Deref<Target = <D as ::sqlx::Database>::Connection>,
-            for<'e> ::sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as ::sqlx::Database>::Connection>,
-            for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
+            for<'e> sqlx::Transaction<'e, D>: std::ops::Deref<Target = <D as sqlx::Database>::Connection>,
+            for<'e> sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
+            for<'e> <D as sqlx::Database>::Arguments<'e>: sqlx::IntoArguments<'e, D>,
 
             // db connection should be able to run migrations
-            D::Connection: ::sqlx::migrate::Migrate,
+            D::Connection: sqlx::migrate::Migrate,
         )
     }
 
@@ -391,44 +391,40 @@ mod test {
         let expected = "\
 impl<D> Repo for DatabaseRepo<D>
 where
-    D: ::sqlx::Database + ::sqlx_repo::SqlxDBNum,
-    for<'e> i8: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> i16: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> i32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> i64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> f32: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> f64: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> String: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> &'e str: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> Vec<u8>: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> uuid::Uuid: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> ::sqlx::types::Json<
+    D: sqlx::Database + sqlx_repo::SqlxDBNum,
+    for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> i32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> i64: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> f32: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> f64: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> String: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> &'e str: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> Vec<u8>: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> uuid::Uuid: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> sqlx::types::Json<
         serde_json::Value,
-    >: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
+    >: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
     for<'e> chrono::DateTime<
         chrono::Utc,
-    >: ::sqlx::Type<D> + ::sqlx::Encode<'e, D> + ::sqlx::Decode<'e, D>,
-    for<'e> chrono::NaiveDateTime: ::sqlx::Type<D> + ::sqlx::Encode<'e, D>
-        + ::sqlx::Decode<'e, D>,
-    for<'e> serde_json::Value: ::sqlx::Type<D> + ::sqlx::Encode<'e, D>
-        + ::sqlx::Decode<'e, D>,
-    usize: ::sqlx::ColumnIndex<D::Row>,
-    for<'e> &'e mut <D as ::sqlx::Database>::Connection: ::sqlx::Executor<
-        'e,
-        Database = D,
-    >,
-    for<'e> &'e ::sqlx::Pool<D>: ::sqlx::Executor<'e, Database = D>,
+    >: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    for<'e> chrono::NaiveDateTime: sqlx::Type<D> + sqlx::Encode<'e, D>
+        + sqlx::Decode<'e, D>,
+    for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Encode<'e, D> + sqlx::Decode<'e, D>,
+    usize: sqlx::ColumnIndex<D::Row>,
+    for<'e> &'e mut <D as sqlx::Database>::Connection: sqlx::Executor<'e, Database = D>,
+    for<'e> &'e sqlx::Pool<D>: sqlx::Executor<'e, Database = D>,
     D::QueryResult: std::fmt::Debug,
-    for<'e> ::sqlx::Transaction<
+    for<'e> sqlx::Transaction<
         'e,
         D,
-    >: std::ops::Deref<Target = <D as ::sqlx::Database>::Connection>,
-    for<'e> ::sqlx::Transaction<
+    >: std::ops::Deref<Target = <D as sqlx::Database>::Connection>,
+    for<'e> sqlx::Transaction<
         'e,
         D,
-    >: std::ops::DerefMut<Target = <D as ::sqlx::Database>::Connection>,
-    for<'e> <D as ::sqlx::Database>::Arguments<'e>: ::sqlx::IntoArguments<'e, D>,
-    D::Connection: ::sqlx::migrate::Migrate,
+    >: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
+    for<'e> <D as sqlx::Database>::Arguments<'e>: sqlx::IntoArguments<'e, D>,
+    D::Connection: sqlx::migrate::Migrate,
 {
     fn elided_lifetime_on_receiver<'life0, 'life1, 'future_lifetime, T>(
         &'life0 self,
