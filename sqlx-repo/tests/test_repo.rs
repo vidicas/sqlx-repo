@@ -66,3 +66,21 @@ async fn test_database_creation() {
         println!()
     }
 }
+
+#[repo(Send + Sync + std::fmt::Debug)]
+impl ShouldCompile for DatabaseRepository {
+    async fn optional_type(&self, i: Option<i32>) -> Result<()> {
+        let query = query!("insert into test values (?)");
+        sqlx::query(query).bind(i).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    //async fn optional_type(&self, i: Option<&str>) -> Result<()> {
+    //    let query = query!("insert into test values (?)");
+    //    sqlx::query(query)
+    //        .bind(i)
+    //        .execute(&self.pool)
+    //        .await?;
+    //    Ok(())
+    //}
+}
