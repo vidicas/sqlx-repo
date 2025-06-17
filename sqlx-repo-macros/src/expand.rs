@@ -67,7 +67,8 @@ impl Expander {
         // database
         parse_quote! (
             where D: sqlx::Database + sqlx_repo::SqlxDBNum,
-            for<'e> &'e sqlx::Pool<D>: sqlx_repo::AcquireExt<D>,
+            // Acquire Extension which adds `start_transaction` method, which forces `BEGIN IMMEDIATE` for sqlite
+            for<'e> sqlx::Pool<D>: sqlx_repo::AcquireExt<D>,
             // Decodable Types
             for<'e> i8: sqlx::Type<D> + sqlx::Decode<'e, D>,
             for<'e> i16: sqlx::Type<D> + sqlx::Decode<'e, D>,
@@ -568,7 +569,7 @@ mod test {
 impl<D> Repo for DatabaseRepository<D>
 where
     D: sqlx::Database + sqlx_repo::SqlxDBNum,
-    for<'e> &'e sqlx::Pool<D>: sqlx_repo::AcquireExt<D>,
+    for<'e> &'e sqlx::Pool<D>: sqlx_repo::AcquireExt<'e, D>,
     for<'e> i8: sqlx::Type<D> + sqlx::Decode<'e, D>,
     for<'e> i16: sqlx::Type<D> + sqlx::Decode<'e, D>,
     for<'e> i32: sqlx::Type<D> + sqlx::Decode<'e, D>,
