@@ -17,12 +17,17 @@ impl Repo for DatabaseRepository {
     }
 
     async fn insert(&self) -> Result<()> {
-        let query = query!("insert into test values (?), (?)");
+        let query = query!("insert into test values (?)");
+        let mut transaction = self.pool.start_transaction().await?;
         sqlx::query(query)
             .bind(1)
-            .bind(2)
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?;
+        sqlx::query(query)
+            .bind(2)
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
         Ok(())
     }
 
