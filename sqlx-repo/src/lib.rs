@@ -1,4 +1,7 @@
+mod ext;
 mod migrator;
+
+pub use ext::AcquireExt;
 
 pub struct DatabaseRepository<D>
 where
@@ -84,6 +87,7 @@ macro_rules! migrator {
 
 pub mod prelude {
     pub use super::{
+        ext::AcquireExt,
         migration, migrator,
         migrator::{init_migrator, Migration},
         DatabaseRepository, SqlxDBNum,

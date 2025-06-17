@@ -77,10 +77,7 @@ impl ShouldCompile for DatabaseRepository {
 
     async fn optional_type_with_lifetime(&self, i: Option<&str>) -> Result<()> {
         let query = query!("insert into test values (?)");
-        sqlx::query(query)
-            .bind(i)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(query).bind(i).execute(&self.pool).await?;
         Ok(())
     }
 }
