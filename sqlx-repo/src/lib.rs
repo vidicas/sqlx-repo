@@ -91,7 +91,7 @@ pub mod prelude {
     pub use chrono;
     pub use futures;
     pub use serde_json;
-    pub use sqlx::{self, Arguments, Row as _};
+    pub use sqlx::{self, Acquire, Arguments, Row as _};
     pub use sqlx_repo_macros::repo;
     pub use url;
     pub use uuid;
