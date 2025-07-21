@@ -251,3 +251,33 @@ fn select_not_in() {
         "SELECT * FROM \"test\" WHERE \"id\" NOT IN (1, '2', $1)"
     );
 }
+
+#[test]
+fn select_with_join() {
+    let input = "
+        select * from foo 
+        join bar on foo.id = bar.id
+        join baz on foo.id = baz.id
+    ";
+
+    let res = parse(input);
+    if let Err(e) = res {
+        println!("{e}")
+    };
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` NOT IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `test` WHERE `id` NOT IN (1, '2', ?)"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"test\" WHERE \"id\" NOT IN (1, '2', $1)"
+    );
+}

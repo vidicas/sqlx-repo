@@ -458,7 +458,7 @@ pub enum Ast {
     Select {
         distinct: bool,
         projections: Vec<Projection>,
-        from: From,
+        from_clause: FromClause,
         selection: Option<Selection>,
         group_by: Vec<GroupByParameter>,
         order_by: Vec<OrderByParameter>,
@@ -474,7 +474,7 @@ pub enum Ast {
         selection: Option<Selection>,
     },
     Delete {
-        from: From,
+        from_clause: FromClause,
         selection: Option<Selection>,
     },
     Drop {
@@ -719,12 +719,70 @@ impl TryFrom<&BinaryOperator> for Op {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum From {
+pub enum FromClause {
     Table(String),
+    TableWithJoin(Vec<TableJoin>),
     None,
 }
 
-impl TryFrom<&[TableWithJoins]> for From {
+fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
+    match relation {
+        TableFactor::Table {
+            name,
+            alias,
+            args,
+            with_hints,
+            version,
+            with_ordinality,
+            partitions,
+            json_path,
+            sample,
+            index_hints,
+        } => {
+            if alias.is_some() {
+                Err("alias is not supported in table factor 'table'")?
+            }
+            // Postgre + MSSQL
+            if args.is_some() {
+                Err(
+                    "arguments of a table-valued function are not supported in table factor 'table'",
+                )?
+            }
+            //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
+            if !with_hints.is_empty() {
+                Err("with hints are not supported in table factor 'table'")?
+            }
+            // Table time-travel, as supported by BigQuery and MSSQL.
+            if version.is_some() {
+                Err("version is not supported in table factor 'table'")?
+            }
+            // Postgres.
+            if *with_ordinality {
+                Err("with ordinality is not supported in table factor 'table'")?
+            }
+            // Mysql
+            if !partitions.is_empty() {
+                Err("partitions are not supported in table factor 'table'")?
+            }
+            // Optional PartiQL JsonPath
+            if json_path.is_some() {
+                Err("json path is not supported in table factor 'table'")?
+            }
+            // Optional table sample modifier
+            if sample.is_some() {
+                Err("sample is not supported in table factor 'table'")?
+            }
+            // Optional index hints (mysql)
+            if !index_hints.is_empty() {
+                Err("index hints are not supported in table factor 'table'")?
+            }
+            Ok(Ast::parse_object_name(name)?)
+        }
+        other => Err(format!("unsupported table factor: {other:?}"))?,
+    }
+}
+
+impl TryFrom<&[TableWithJoins]> for FromClause {
     type Error = Error;
 
     fn try_from(tables: &[TableWithJoins]) -> Result<Self, Self::Error> {
@@ -734,65 +792,29 @@ impl TryFrom<&[TableWithJoins]> for From {
                     ref relation,
                     ref joins,
                 },
-            ] if joins.is_empty() => match relation {
-                TableFactor::Table {
-                    name,
-                    alias,
-                    args,
-                    with_hints,
-                    version,
-                    with_ordinality,
-                    partitions,
-                    json_path,
-                    sample,
-                    index_hints,
-                } => {
-                    if alias.is_some() {
-                        Err("alias is not supported in table factor 'table'")?
-                    }
-                    // Postgre + MSSQL
-                    if args.is_some() {
-                        Err(
-                            "arguments of a table-valued function are not supported in table factor 'table'",
-                        )?
-                    }
-                    //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
-                    if !with_hints.is_empty() {
-                        Err("with hints are not supported in table factor 'table'")?
-                    }
-                    // Table time-travel, as supported by BigQuery and MSSQL.
-                    if version.is_some() {
-                        Err("version is not supported in table factor 'table'")?
-                    }
-                    // Postgres.
-                    if *with_ordinality {
-                        Err("with ordinality is not supported in table factor 'table'")?
-                    }
-                    // Mysql
-                    if !partitions.is_empty() {
-                        Err("partitions are not supported in table factor 'table'")?
-                    }
-                    // Optional PartiQL JsonPath
-                    if json_path.is_some() {
-                        Err("json path is not supported in table factor 'table'")?
-                    }
-                    // Optional table sample modifier
-                    if sample.is_some() {
-                        Err("sample is not supported in table factor 'table'")?
-                    }
-                    // Optional index hints (mysql)
-                    if !index_hints.is_empty() {
-                        Err("index hints are not supported in table factor 'table'")?
-                    }
-                    From::Table(Ast::parse_object_name(name)?)
-                }
-                other => Err(format!("unsupported table factor: {other:?}"))?,
-            },
-            &[] => From::None,
-            other => Err(format!("joins are not supported yet: {tables:?}"))?,
+            ] if joins.is_empty() => Self::Table(table_relation_to_object_name(relation)?),
+            &[
+                TableWithJoins {
+                    ref relation,
+                    ref joins,
+                },
+            ] => {
+                unimplemented!()
+            }
+            &[] => Self::None,
+            other => Err(format!(
+                "select with multiple tables is not supported yet: {other:?}"
+            ))?,
         };
         Ok(from)
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableJoin {
+    /// Table name
+    name: String,
+    join: (),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1304,7 +1326,7 @@ impl Ast {
             })
             .collect::<Result<Vec<Projection>>>()?;
 
-        let from = select.from.as_slice().try_into()?;
+        let from_clause = select.from.as_slice().try_into()?;
 
         let selection = select
             .selection
@@ -1360,7 +1382,7 @@ impl Ast {
         let ast = Ast::Select {
             distinct: select.distinct.is_some(),
             projections,
-            from,
+            from_clause,
             selection,
             group_by,
             order_by,
@@ -1532,14 +1554,17 @@ impl Ast {
             FromTable::WithFromKeyword(tables) => tables,
             FromTable::WithoutKeyword(_) => Err("delete without from keyword is not supported")?,
         };
-        let from = tables.as_slice().try_into()?;
+        let from_clause = tables.as_slice().try_into()?;
 
         let selection = delete
             .selection
             .as_ref()
             .map(|selection| selection.try_into())
             .transpose()?;
-        Ok(Ast::Delete { from, selection })
+        Ok(Ast::Delete {
+            from_clause,
+            selection,
+        })
     }
 
     fn parse_drop(
@@ -1739,7 +1764,7 @@ impl Ast {
         buf: &mut dyn Write,
         distinct: bool,
         projections: &[Projection],
-        from: &From,
+        from_clause: &FromClause,
         selection: Option<&Selection>,
         group_by: &[GroupByParameter],
         order_by: &[OrderByParameter],
@@ -1770,12 +1795,13 @@ impl Ast {
             }
         }
 
-        match from {
-            From::Table(name) => {
+        match from_clause {
+            FromClause::Table(name) => {
                 buf.write_all(b" FROM ")?;
                 Self::write_quoted(dialect, buf, name)?
             }
-            From::None => (),
+            FromClause::None => (),
+            FromClause::TableWithJoin(_) => unimplemented!(),
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -1990,13 +2016,14 @@ impl Ast {
     fn delete_to_sql(
         dialect: &dyn ToQuery,
         buf: &mut dyn Write,
-        from: &From,
+        from_clause: &FromClause,
         selection: Option<&Selection>,
     ) -> Result<()> {
         buf.write_all(b"DELETE FROM ")?;
-        match from {
-            From::Table(name) => Self::write_quoted(dialect, buf, name)?,
-            From::None => (),
+        match from_clause {
+            FromClause::Table(name) => Self::write_quoted(dialect, buf, name)?,
+            FromClause::None => Err("DELETE without FROM is not supported")?,
+            FromClause::TableWithJoin(_) => Err("DELETE with joins is not supported")?,
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -2113,7 +2140,7 @@ impl Ast {
             Ast::Select {
                 distinct,
                 projections,
-                from,
+                from_clause,
                 selection,
                 group_by,
                 order_by,
@@ -2122,7 +2149,7 @@ impl Ast {
                 buf,
                 *distinct,
                 projections,
-                from,
+                from_clause,
                 selection.as_ref(),
                 group_by,
                 order_by,
@@ -2149,9 +2176,10 @@ impl Ast {
                 assignments.as_slice(),
                 selection.as_ref(),
             )?,
-            Ast::Delete { from, selection } => {
-                Self::delete_to_sql(dialect, buf, from, selection.as_ref())?
-            }
+            Ast::Delete {
+                from_clause,
+                selection,
+            } => Self::delete_to_sql(dialect, buf, from_clause, selection.as_ref())?,
             Ast::Drop {
                 object_type,
                 if_exists,
