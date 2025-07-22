@@ -251,3 +251,63 @@ fn select_not_in() {
         "SELECT * FROM \"test\" WHERE \"id\" NOT IN (1, '2', $1)"
     );
 }
+
+#[test]
+fn select_with_join() {
+    let input = "
+        select * from foo 
+        join bar on foo.id = bar.id
+        join baz on foo.id = baz.id
+    ";
+
+    let res = parse(input);
+    if let Err(e) = res {
+        println!("{e}")
+    };
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `foo` JOIN `bar` ON `foo`.`id` = `bar`.`id` JOIN `baz` ON `foo`.`id` = `baz`.`id`",
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `foo` JOIN `bar` ON `foo`.`id` = `bar`.`id` JOIN `baz` ON `foo`.`id` = `baz`.`id`",
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"foo\" JOIN \"bar\" ON \"foo\".\"id\" = \"bar\".\"id\" JOIN \"baz\" ON \"foo\".\"id\" = \"baz\".\"id\"",
+    );
+}
+
+#[test]
+fn select_with_inner_join() {
+    let input = "
+        select * from foo
+        inner join bar on foo.id = bar.id
+        inner join baz on foo.id = baz.id
+    ";
+
+    let res = parse(input);
+    if let Err(e) = res {
+        println!("{e}")
+    };
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `foo` INNER JOIN `bar` ON `foo`.`id` = `bar`.`id` INNER JOIN `baz` ON `foo`.`id` = `baz`.`id`",
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `foo` INNER JOIN `bar` ON `foo`.`id` = `bar`.`id` INNER JOIN `baz` ON `foo`.`id` = `baz`.`id`",
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"foo\" INNER JOIN \"bar\" ON \"foo\".\"id\" = \"bar\".\"id\" INNER JOIN \"baz\" ON \"foo\".\"id\" = \"baz\".\"id\"",
+    );
+}

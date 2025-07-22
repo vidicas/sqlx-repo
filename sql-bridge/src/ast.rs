@@ -14,8 +14,8 @@ use sqlparser::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
         ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, Delete, ExactNumberInfo,
         Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
-        ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem, SetExpr,
-        SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
+        JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem,
+        SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
         UpdateTableFromKind, Value, ValueWithSpan,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
@@ -458,7 +458,7 @@ pub enum Ast {
     Select {
         distinct: bool,
         projections: Vec<Projection>,
-        from: From,
+        from_clause: FromClause,
         selection: Option<Selection>,
         group_by: Vec<GroupByParameter>,
         order_by: Vec<OrderByParameter>,
@@ -474,7 +474,7 @@ pub enum Ast {
         selection: Option<Selection>,
     },
     Delete {
-        from: From,
+        from_clause: FromClause,
         selection: Option<Selection>,
     },
     Drop {
@@ -513,6 +513,7 @@ pub enum Selection {
         right: Box<Selection>,
     },
     Ident(String),
+    CompoundIdent(Vec<String>),
     Number(String),
     String(String),
     Placeholder,
@@ -540,6 +541,10 @@ impl TryFrom<&Expr> for Selection {
                 },
             },
             Expr::Identifier(id) => Selection::Ident(id.value.clone()),
+            Expr::CompoundIdentifier(ids) => {
+                // FIXME: SQLite only supports table.column, not schema.table.column or database.table.column
+                Selection::CompoundIdent(ids.iter().map(|id| id.value.clone()).collect())
+            }
             Expr::Value(value) => match &value.value {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
@@ -719,12 +724,115 @@ impl TryFrom<&BinaryOperator> for Op {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum From {
+pub enum FromClause {
     Table(String),
+    TableWithJoin(TableJoin),
     None,
 }
 
-impl TryFrom<&[TableWithJoins]> for From {
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableJoin {
+    name: String,
+    join: Vec<Join>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Join {
+    name: String,
+    operator: JoinOperator,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JoinOperator {
+    Join(Selection),
+    Inner(Selection),
+}
+
+impl TryFrom<&sqlparser::ast::Join> for Join {
+    type Error = Error;
+
+    fn try_from(table: &sqlparser::ast::Join) -> Result<Self, Self::Error> {
+        /// ClickHouse supports the optional `GLOBAL` keyword before the join operator.
+        /// See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
+        if table.global {
+            Err("global keyword before the join operator isn't supported")?
+        };
+
+        let name = table_relation_to_object_name(&table.relation)?;
+        let operator = match &table.join_operator {
+            sqlparser::ast::JoinOperator::Join(constraint) => match constraint {
+                JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
+                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+            },
+            sqlparser::ast::JoinOperator::Inner(constraint) => match constraint {
+                JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
+                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+            },
+            other => Err(format!("join operator '{other:?}' is not supported"))?,
+        };
+
+        Ok(Self { name, operator })
+    }
+}
+
+fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
+    match relation {
+        TableFactor::Table {
+            name,
+            alias,
+            args,
+            with_hints,
+            version,
+            with_ordinality,
+            partitions,
+            json_path,
+            sample,
+            index_hints,
+        } => {
+            if alias.is_some() {
+                Err("alias is not supported in table factor 'table'")?
+            }
+            // Postgre + MSSQL
+            if args.is_some() {
+                Err(
+                    "arguments of a table-valued function are not supported in table factor 'table'",
+                )?
+            }
+            //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
+            if !with_hints.is_empty() {
+                Err("with hints are not supported in table factor 'table'")?
+            }
+            // Table time-travel, as supported by BigQuery and MSSQL.
+            if version.is_some() {
+                Err("version is not supported in table factor 'table'")?
+            }
+            // Postgres.
+            if *with_ordinality {
+                Err("with ordinality is not supported in table factor 'table'")?
+            }
+            // Mysql
+            if !partitions.is_empty() {
+                Err("partitions are not supported in table factor 'table'")?
+            }
+            // Optional PartiQL JsonPath
+            if json_path.is_some() {
+                Err("json path is not supported in table factor 'table'")?
+            }
+            // Optional table sample modifier
+            if sample.is_some() {
+                Err("sample is not supported in table factor 'table'")?
+            }
+            // Optional index hints (mysql)
+            if !index_hints.is_empty() {
+                Err("index hints are not supported in table factor 'table'")?
+            }
+            Ok(Ast::parse_object_name(name)?)
+        }
+        other => Err(format!("unsupported table factor: {other:?}"))?,
+    }
+}
+
+impl TryFrom<&[TableWithJoins]> for FromClause {
     type Error = Error;
 
     fn try_from(tables: &[TableWithJoins]) -> Result<Self, Self::Error> {
@@ -734,62 +842,21 @@ impl TryFrom<&[TableWithJoins]> for From {
                     ref relation,
                     ref joins,
                 },
-            ] if joins.is_empty() => match relation {
-                TableFactor::Table {
-                    name,
-                    alias,
-                    args,
-                    with_hints,
-                    version,
-                    with_ordinality,
-                    partitions,
-                    json_path,
-                    sample,
-                    index_hints,
-                } => {
-                    if alias.is_some() {
-                        Err("alias is not supported in table factor 'table'")?
-                    }
-                    // Postgre + MSSQL
-                    if args.is_some() {
-                        Err(
-                            "arguments of a table-valued function are not supported in table factor 'table'",
-                        )?
-                    }
-                    //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
-                    if !with_hints.is_empty() {
-                        Err("with hints are not supported in table factor 'table'")?
-                    }
-                    // Table time-travel, as supported by BigQuery and MSSQL.
-                    if version.is_some() {
-                        Err("version is not supported in table factor 'table'")?
-                    }
-                    // Postgres.
-                    if *with_ordinality {
-                        Err("with ordinality is not supported in table factor 'table'")?
-                    }
-                    // Mysql
-                    if !partitions.is_empty() {
-                        Err("partitions are not supported in table factor 'table'")?
-                    }
-                    // Optional PartiQL JsonPath
-                    if json_path.is_some() {
-                        Err("json path is not supported in table factor 'table'")?
-                    }
-                    // Optional table sample modifier
-                    if sample.is_some() {
-                        Err("sample is not supported in table factor 'table'")?
-                    }
-                    // Optional index hints (mysql)
-                    if !index_hints.is_empty() {
-                        Err("index hints are not supported in table factor 'table'")?
-                    }
-                    From::Table(Ast::parse_object_name(name)?)
+            ] => {
+                let name = table_relation_to_object_name(relation)?;
+                if joins.is_empty() {
+                    Self::Table(name)
+                } else {
+                    Self::TableWithJoin(TableJoin {
+                        name,
+                        join: joins.iter().map(|t| t.try_into()).collect::<Result<_>>()?,
+                    })
                 }
-                other => Err(format!("unsupported table factor: {other:?}"))?,
-            },
-            &[] => From::None,
-            other => Err(format!("joins are not supported yet: {tables:?}"))?,
+            }
+            &[] => Self::None,
+            other => Err(format!(
+                "select with multiple tables is not supported yet: {other:?}"
+            ))?,
         };
         Ok(from)
     }
@@ -1304,7 +1371,7 @@ impl Ast {
             })
             .collect::<Result<Vec<Projection>>>()?;
 
-        let from = select.from.as_slice().try_into()?;
+        let from_clause = select.from.as_slice().try_into()?;
 
         let selection = select
             .selection
@@ -1360,7 +1427,7 @@ impl Ast {
         let ast = Ast::Select {
             distinct: select.distinct.is_some(),
             projections,
-            from,
+            from_clause,
             selection,
             group_by,
             order_by,
@@ -1532,14 +1599,17 @@ impl Ast {
             FromTable::WithFromKeyword(tables) => tables,
             FromTable::WithoutKeyword(_) => Err("delete without from keyword is not supported")?,
         };
-        let from = tables.as_slice().try_into()?;
+        let from_clause = tables.as_slice().try_into()?;
 
         let selection = delete
             .selection
             .as_ref()
             .map(|selection| selection.try_into())
             .transpose()?;
-        Ok(Ast::Delete { from, selection })
+        Ok(Ast::Delete {
+            from_clause,
+            selection,
+        })
     }
 
     fn parse_drop(
@@ -1739,7 +1809,7 @@ impl Ast {
         buf: &mut dyn Write,
         distinct: bool,
         projections: &[Projection],
-        from: &From,
+        from_clause: &FromClause,
         selection: Option<&Selection>,
         group_by: &[GroupByParameter],
         order_by: &[OrderByParameter],
@@ -1770,12 +1840,32 @@ impl Ast {
             }
         }
 
-        match from {
-            From::Table(name) => {
+        match from_clause {
+            FromClause::Table(name) => {
                 buf.write_all(b" FROM ")?;
                 Self::write_quoted(dialect, buf, name)?
             }
-            From::None => (),
+            FromClause::None => (),
+            FromClause::TableWithJoin(table) => {
+                buf.write_all(b" FROM ")?;
+                Self::write_quoted(dialect, buf, &table.name)?;
+                for table in table.join.iter() {
+                    match &table.operator {
+                        JoinOperator::Join(selection) => {
+                            buf.write_all(b" JOIN ")?;
+                            Self::write_quoted(dialect, buf, &table.name);
+                            buf.write_all(b" ON ")?;
+                            Self::selection_to_sql(dialect, buf, &selection)?;
+                        }
+                        JoinOperator::Inner(selection) => {
+                            buf.write_all(b" INNER JOIN ")?;
+                            Self::write_quoted(dialect, buf, &table.name);
+                            buf.write_all(b" ON ")?;
+                            Self::selection_to_sql(dialect, buf, &selection)?;
+                        }
+                    }
+                }
+            }
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -1917,6 +2007,15 @@ impl Ast {
                 )?;
             }
             Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
+            Selection::CompoundIdent(idents) => {
+                if let Some((first, rest)) = idents.split_first() {
+                    Self::write_quoted(dialect, buf, first)?;
+                    for ident in rest {
+                        buf.write_all(b".");
+                        Self::write_quoted(dialect, buf, ident)?;
+                    }
+                }
+            }
             Selection::Number(number) => buf.write_all(number.as_bytes())?,
             Selection::String(string) => {
                 for chunk in [b"'", string.as_bytes(), b"'"] {
@@ -1990,13 +2089,14 @@ impl Ast {
     fn delete_to_sql(
         dialect: &dyn ToQuery,
         buf: &mut dyn Write,
-        from: &From,
+        from_clause: &FromClause,
         selection: Option<&Selection>,
     ) -> Result<()> {
         buf.write_all(b"DELETE FROM ")?;
-        match from {
-            From::Table(name) => Self::write_quoted(dialect, buf, name)?,
-            From::None => (),
+        match from_clause {
+            FromClause::Table(name) => Self::write_quoted(dialect, buf, name)?,
+            FromClause::None => Err("DELETE without FROM is not supported")?,
+            FromClause::TableWithJoin(_) => Err("DELETE with joins is not supported")?,
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -2113,7 +2213,7 @@ impl Ast {
             Ast::Select {
                 distinct,
                 projections,
-                from,
+                from_clause,
                 selection,
                 group_by,
                 order_by,
@@ -2122,7 +2222,7 @@ impl Ast {
                 buf,
                 *distinct,
                 projections,
-                from,
+                from_clause,
                 selection.as_ref(),
                 group_by,
                 order_by,
@@ -2149,9 +2249,10 @@ impl Ast {
                 assignments.as_slice(),
                 selection.as_ref(),
             )?,
-            Ast::Delete { from, selection } => {
-                Self::delete_to_sql(dialect, buf, from, selection.as_ref())?
-            }
+            Ast::Delete {
+                from_clause,
+                selection,
+            } => Self::delete_to_sql(dialect, buf, from_clause, selection.as_ref())?,
             Ast::Drop {
                 object_type,
                 if_exists,
