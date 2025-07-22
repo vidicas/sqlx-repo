@@ -513,6 +513,7 @@ pub enum Selection {
         right: Box<Selection>,
     },
     Ident(String),
+    CompoundIdent(Vec<String>),
     Number(String),
     String(String),
     Placeholder,
@@ -540,6 +541,10 @@ impl TryFrom<&Expr> for Selection {
                 },
             },
             Expr::Identifier(id) => Selection::Ident(id.value.clone()),
+            Expr::CompoundIdentifier(ids) => {
+                // FIXME: SQLite only supports table.column, not schema.table.column or database.table.column
+                Selection::CompoundIdent(ids.iter().map(|id| id.value.clone()).collect())
+            }
             Expr::Value(value) => match &value.value {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
@@ -1983,6 +1988,15 @@ impl Ast {
                 )?;
             }
             Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
+            Selection::CompoundIdent(idents) => {
+                if let Some((first, rest)) = idents.split_first() {
+                    Self::write_quoted(dialect, buf, first)?;
+                    for ident in rest {
+                        buf.write_all(b".");
+                        Self::write_quoted(dialect, buf, ident)?;
+                    }
+                }
+            }
             Selection::Number(number) => buf.write_all(number.as_bytes())?,
             Selection::String(string) => {
                 for chunk in [b"'", string.as_bytes(), b"'"] {
