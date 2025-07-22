@@ -14,8 +14,8 @@ use sqlparser::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
         ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, Delete, ExactNumberInfo,
         Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
-        ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem, SetExpr,
-        SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
+        JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem,
+        SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
         UpdateTableFromKind, Value, ValueWithSpan,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
@@ -721,8 +721,53 @@ impl TryFrom<&BinaryOperator> for Op {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FromClause {
     Table(String),
-    TableWithJoin(Vec<TableJoin>),
+    TableWithJoin(TableJoin),
     None,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableJoin {
+    name: String,
+    join: Vec<Join>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Join {
+    name: String,
+    operator: JoinOperator,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JoinOperator {
+    Join(Selection),
+    Inner(Selection),
+}
+
+impl TryFrom<&sqlparser::ast::Join> for Join {
+    type Error = Error;
+
+    fn try_from(table: &sqlparser::ast::Join) -> Result<Self, Self::Error> {
+        /// ClickHouse supports the optional `GLOBAL` keyword before the join operator.
+        /// See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
+        if table.global {
+            Err("global keyword before the join operator isn't supported")?
+        };
+
+        let name = table_relation_to_object_name(&table.relation)?;
+        let operator = match &table.join_operator {
+            sqlparser::ast::JoinOperator::Join(constraint) => match constraint {
+                JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
+                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+            },
+            sqlparser::ast::JoinOperator::Inner(constraint) => match constraint {
+                JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
+                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+            },
+            other => Err(format!("join operator '{other:?}' is not supported"))?,
+        };
+
+        Ok(Self { name, operator })
+    }
 }
 
 fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
@@ -792,14 +837,16 @@ impl TryFrom<&[TableWithJoins]> for FromClause {
                     ref relation,
                     ref joins,
                 },
-            ] if joins.is_empty() => Self::Table(table_relation_to_object_name(relation)?),
-            &[
-                TableWithJoins {
-                    ref relation,
-                    ref joins,
-                },
             ] => {
-                unimplemented!()
+                let name = table_relation_to_object_name(relation)?;
+                if joins.is_empty() {
+                    Self::Table(name)
+                } else {
+                    Self::TableWithJoin(TableJoin {
+                        name,
+                        join: joins.iter().map(|t| t.try_into()).collect::<Result<_>>()?,
+                    })
+                }
             }
             &[] => Self::None,
             other => Err(format!(
@@ -808,13 +855,6 @@ impl TryFrom<&[TableWithJoins]> for FromClause {
         };
         Ok(from)
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TableJoin {
-    /// Table name
-    name: String,
-    join: (),
 }
 
 #[derive(Debug, Clone, PartialEq)]
