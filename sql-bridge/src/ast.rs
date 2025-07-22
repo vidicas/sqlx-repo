@@ -1846,7 +1846,26 @@ impl Ast {
                 Self::write_quoted(dialect, buf, name)?
             }
             FromClause::None => (),
-            FromClause::TableWithJoin(_) => unimplemented!(),
+            FromClause::TableWithJoin(table) => {
+                buf.write_all(b" FROM ")?;
+                Self::write_quoted(dialect, buf, &table.name)?;
+                for table in table.join.iter() {
+                    match &table.operator {
+                        JoinOperator::Join(selection) => {
+                            buf.write_all(b" JOIN ")?;
+                            Self::write_quoted(dialect, buf, &table.name);
+                            buf.write_all(b" ON ")?;
+                            Self::selection_to_sql(dialect, buf, &selection)?;
+                        }
+                        JoinOperator::Inner(selection) => {
+                            buf.write_all(b" INNER JOIN ")?;
+                            Self::write_quoted(dialect, buf, &table.name);
+                            buf.write_all(b" ON ")?;
+                            Self::selection_to_sql(dialect, buf, &selection)?;
+                        }
+                    }
+                }
+            }
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
