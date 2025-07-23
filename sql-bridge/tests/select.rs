@@ -43,7 +43,28 @@ fn test_query_with_projection() {
 }
 
 #[test]
-fn test_query_with_compound_identifier() {
+fn test_query_with_compound_ident_and_all() {
+    let input = "select test.id, test.key, * from test";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT `test`.`id`, `test`.`key`, * FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT `test`.`id`, `test`.`key`, * FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT \"test\".\"id\", \"test\".\"key\", * FROM \"test\""
+    );
+}
+
+#[test]
+fn test_query_with_compound_ident_and_ident() {
     let input = "select test.id, key from test";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -61,6 +82,16 @@ fn test_query_with_compound_identifier() {
         ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT \"test\".\"id\", \"key\" FROM \"test\""
     );
+}
+
+#[test]
+fn query_with_too_many_ident_compounds() {
+    let input = "select schema.foo.id from foo";
+    let res = parse(input);
+    assert!(res.is_err());
+
+    let err = res.unwrap_err().to_string();
+    assert!(err.contains("only two-parts compound identifiers are supported"));
 }
 
 #[test]
@@ -331,4 +362,14 @@ fn select_with_inner_join() {
         ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT * FROM \"foo\" INNER JOIN \"bar\" ON \"foo\".\"id\" = \"bar\".\"id\" INNER JOIN \"baz\" ON \"foo\".\"id\" = \"baz\".\"id\"",
     );
+}
+
+#[test]
+fn select_with_join_too_many_indent_compounds() {
+    let input = "select * from foo inner join bar on schema.foo.id = schema.bar.id ";
+    let res = parse(input);
+    assert!(res.is_err());
+
+    let err = res.unwrap_err().to_string();
+    assert!(err.contains("only two-parts compound identifiers are supported"));
 }

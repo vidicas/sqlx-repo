@@ -489,10 +489,16 @@ pub enum Ast {
 pub enum Projection {
     WildCard,
     Identifier(String),
-    CompoundIdentifier(Vec<String>),
+    CompoundIdentifier(CompoundIdentifier),
     Function(Function),
     NumericLiteral(String),
     String(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompoundIdentifier {
+    table: String,
+    column: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -514,7 +520,7 @@ pub enum Selection {
         right: Box<Selection>,
     },
     Ident(String),
-    CompoundIdent(Vec<String>),
+    CompoundIdentifier(CompoundIdentifier),
     Number(String),
     String(String),
     Placeholder,
@@ -543,8 +549,17 @@ impl TryFrom<&Expr> for Selection {
             },
             Expr::Identifier(id) => Selection::Ident(id.value.clone()),
             Expr::CompoundIdentifier(ids) => {
-                // FIXME: SQLite only supports table.column, not schema.table.column or database.table.column
-                Selection::CompoundIdent(ids.iter().map(|id| id.value.clone()).collect())
+                // SQLite only supports table.column, not schema.table.column or database.table.column
+                if ids.len() != 2 {
+                    Err(format!(
+                        "only two-parts compound identifiers are supported, not {}",
+                        ids.len()
+                    ))?
+                }
+                Selection::CompoundIdentifier(CompoundIdentifier {
+                    table: ids[0].value.clone(),
+                    column: ids[1].value.clone(),
+                })
             }
             Expr::Value(value) => match &value.value {
                 Value::Number(number, _) => Selection::Number(number.clone()),
@@ -1365,12 +1380,20 @@ impl Ast {
                     SelectItem::UnnamedExpr(Expr::Value(value)) => match &value.value {
                         Value::Number(value, _) => Ok(Projection::NumericLiteral(value.clone())),
                         Value::SingleQuotedString(value) => Ok(Projection::String(value.clone())),
-                        value => Err("Unsupported value type in projection: {value:?}")?,
+                        value => Err("unsupported value type in projection: {value:?}")?,
                     },
                     SelectItem::UnnamedExpr(Expr::CompoundIdentifier(values)) => {
-                        Ok(Projection::CompoundIdentifier(
-                            values.iter().map(|ident| ident.value.clone()).collect(),
-                        ))
+                        // SQLite only supports table.column, not schema.table.column or database.table.column
+                        if values.len() != 2 {
+                            Err(format!(
+                                "only two-parts compound identifiers are supported, not {}",
+                                values.len()
+                            ))?
+                        }
+                        Ok(Projection::CompoundIdentifier(CompoundIdentifier {
+                            table: values[0].value.clone(),
+                            column: values[1].value.clone(),
+                        }))
                     }
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
@@ -1830,14 +1853,10 @@ impl Ast {
                 Projection::Identifier(ident) => {
                     Self::write_quoted(dialect, buf, ident)?;
                 }
-                Projection::CompoundIdentifier(idents) => {
-                    if let Some((first, rest)) = idents.split_first() {
-                        Self::write_quoted(dialect, buf, first)?;
-                        for ident in rest {
-                            buf.write_all(b".");
-                            Self::write_quoted(dialect, buf, ident)?;
-                        }
-                    }
+                Projection::CompoundIdentifier(compound) => {
+                    Self::write_quoted(dialect, buf, &compound.table)?;
+                    buf.write_all(b".");
+                    Self::write_quoted(dialect, buf, &compound.column)?;
                 }
                 Projection::Function(function) => match function {
                     Function::Count(FunctionArg::Wildcard) => buf.write_all(b"COUNT(*)")?,
@@ -2022,14 +2041,10 @@ impl Ast {
                 )?;
             }
             Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
-            Selection::CompoundIdent(idents) => {
-                if let Some((first, rest)) = idents.split_first() {
-                    Self::write_quoted(dialect, buf, first)?;
-                    for ident in rest {
-                        buf.write_all(b".");
-                        Self::write_quoted(dialect, buf, ident)?;
-                    }
-                }
+            Selection::CompoundIdentifier(compound) => {
+                Self::write_quoted(dialect, buf, &compound.table)?;
+                buf.write_all(b".");
+                Self::write_quoted(dialect, buf, &compound.column)?;
             }
             Selection::Number(number) => buf.write_all(number.as_bytes())?,
             Selection::String(string) => {
