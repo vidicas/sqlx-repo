@@ -43,6 +43,27 @@ fn test_query_with_projection() {
 }
 
 #[test]
+fn test_query_with_compound_identifier() {
+    let input = "select test.id, key from test";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT `test`.`id`, `key` FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT `test`.`id`, `key` FROM `test`"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT \"test\".\"id\", \"key\" FROM \"test\""
+    );
+}
+
+#[test]
 fn test_query_with_predicates() {
     let input = "select * from test where id = 1 AND key = 'foo'";
     let mut ast = parse(input).unwrap();

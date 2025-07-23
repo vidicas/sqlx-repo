@@ -489,6 +489,7 @@ pub enum Ast {
 pub enum Projection {
     WildCard,
     Identifier(String),
+    CompoundIdentifier(Vec<String>),
     Function(Function),
     NumericLiteral(String),
     String(String),
@@ -1366,6 +1367,11 @@ impl Ast {
                         Value::SingleQuotedString(value) => Ok(Projection::String(value.clone())),
                         value => Err("Unsupported value type in projection: {value:?}")?,
                     },
+                    SelectItem::UnnamedExpr(Expr::CompoundIdentifier(values)) => {
+                        Ok(Projection::CompoundIdentifier(
+                            values.iter().map(|ident| ident.value.clone()).collect(),
+                        ))
+                    }
                     _ => Err(format!("unsupported projection: {projection:?}"))?,
                 }
             })
@@ -1823,6 +1829,15 @@ impl Ast {
                 Projection::WildCard => buf.write_all(b"*")?,
                 Projection::Identifier(ident) => {
                     Self::write_quoted(dialect, buf, ident)?;
+                }
+                Projection::CompoundIdentifier(idents) => {
+                    if let Some((first, rest)) = idents.split_first() {
+                        Self::write_quoted(dialect, buf, first)?;
+                        for ident in rest {
+                            buf.write_all(b".");
+                            Self::write_quoted(dialect, buf, ident)?;
+                        }
+                    }
                 }
                 Projection::Function(function) => match function {
                     Function::Count(FunctionArg::Wildcard) => buf.write_all(b"COUNT(*)")?,
