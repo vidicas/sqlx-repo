@@ -261,7 +261,7 @@ impl IntoIterator for ColumnOptions {
 impl std::fmt::Display for ColumnOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for option in self.into_iter() {
-            write!(f, "{:?} ", option)?;
+            write!(f, "{option:?} ")?;
         }
         Ok(())
     }
@@ -1064,14 +1064,12 @@ impl Ast {
             storage,
             location,
         }) = hive_formats
-        {
-            if row_format.is_some()
+            && (row_format.is_some()
                 || serde_properties.is_some()
                 || storage.is_some()
-                || location.is_some()
-            {
-                Err("hive formats are not supported in create table")?
-            }
+                || location.is_some())
+        {
+            Err("hive formats are not supported in create table")?
         }
 
         if !table_properties.is_empty() {
@@ -1924,13 +1922,13 @@ impl Ast {
                             buf.write_all(b" JOIN ")?;
                             Self::write_quoted(dialect, buf, &table.name);
                             buf.write_all(b" ON ")?;
-                            Self::selection_to_sql(dialect, buf, &selection)?;
+                            Self::selection_to_sql(dialect, buf, selection)?;
                         }
                         JoinOperator::Inner(selection) => {
                             buf.write_all(b" INNER JOIN ")?;
                             Self::write_quoted(dialect, buf, &table.name);
                             buf.write_all(b" ON ")?;
-                            Self::selection_to_sql(dialect, buf, &selection)?;
+                            Self::selection_to_sql(dialect, buf, selection)?;
                         }
                     }
                 }
