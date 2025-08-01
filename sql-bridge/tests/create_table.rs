@@ -299,3 +299,123 @@ FOREIGN KEY ("dept_id", "location_id") REFERENCES departments("dept_id", "locati
 )"#
     );
 }
+
+#[test]
+fn test_foreign_key_on_delete_cascade() {
+    let input = r#"CREATE TABLE employees (
+        emp_id INT PRIMARY KEY,
+        dept_id INT,
+        FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE CASCADE
+    )"#;
+
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INT PRIMARY KEY,
+`dept_id` INT,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE CASCADE
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INTEGER PRIMARY KEY,
+`dept_id` INTEGER,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE CASCADE
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        r#"CREATE TABLE "employees" (
+"emp_id" INT PRIMARY KEY,
+"dept_id" INT,
+FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE CASCADE
+)"#
+    );
+}
+
+#[test]
+fn test_foreign_key_on_delete_set_null() {
+    let input = r#"CREATE TABLE employees (
+        emp_id INT PRIMARY KEY,
+        dept_id INT,
+        FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE SET NULL 
+    )"#;
+
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INT PRIMARY KEY,
+`dept_id` INT,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE SET NULL
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INTEGER PRIMARY KEY,
+`dept_id` INTEGER,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE SET NULL
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        r#"CREATE TABLE "employees" (
+"emp_id" INT PRIMARY KEY,
+"dept_id" INT,
+FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE SET NULL
+)"#
+    );
+}
+
+#[test]
+fn test_foreign_key_on_delete_restrict() {
+    let input = r#"CREATE TABLE employees (
+        emp_id INT PRIMARY KEY,
+        dept_id INT,
+        FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE RESTRICT
+    )"#;
+
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INT PRIMARY KEY,
+`dept_id` INT,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE RESTRICT
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        r#"CREATE TABLE `employees` (
+`emp_id` INTEGER PRIMARY KEY,
+`dept_id` INTEGER,
+FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE RESTRICT
+)"#
+    );
+
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        r#"CREATE TABLE "employees" (
+"emp_id" INT PRIMARY KEY,
+"dept_id" INT,
+FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE RESTRICT
+)"#
+    );
+}

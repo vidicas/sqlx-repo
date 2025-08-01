@@ -14,9 +14,9 @@ use sqlparser::{
         Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
         ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, Delete, ExactNumberInfo,
         Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
-        JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, SelectItem,
-        SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins,
-        UpdateTableFromKind, Value, ValueWithSpan,
+        JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query,
+        ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement, Table,
+        TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value, ValueWithSpan,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -261,7 +261,7 @@ impl IntoIterator for ColumnOptions {
 impl std::fmt::Display for ColumnOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for option in self.into_iter() {
-            write!(f, "{:?} ", option)?;
+            write!(f, "{option:?} ")?;
         }
         Ok(())
     }
@@ -311,7 +311,30 @@ pub enum Constraint {
         columns: Vec<String>,
         referred_columns: Vec<String>,
         foreign_table: String,
+        on_delete: Option<OnDeleteAction>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OnDeleteAction {
+    Cascade,
+    SetNull,
+    Restrict,
+}
+
+impl TryFrom<&ReferentialAction> for OnDeleteAction {
+    type Error = Error;
+
+    fn try_from(value: &ReferentialAction) -> Result<Self, Self::Error> {
+        match value {
+            ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
+            ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
+            ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
+            other => Err(format!(
+                "on delete {other} in foreign key constraint is not supported"
+            ))?,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -404,15 +427,16 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         if name.is_some() {
                             Err("named foreign key constraint is not supported")?
                         }
-                        if on_delete.is_some() {
-                            Err("on delete in foreign key constraint is not supported")?
-                        }
                         if on_update.is_some() {
                             Err("on update in foreign key constraint is not supported")?
                         }
                         if characteristics.is_some() {
                             Err("characteristics in foreign key constraint is not supported")?
                         }
+                        let on_delete = match on_delete {
+                            None => None,
+                            Some(action) => Some(action.try_into()?),
+                        };
                         let columns = columns
                             .iter()
                             .map(|Ident { value, .. }| value.clone())
@@ -426,6 +450,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                             columns,
                             referred_columns,
                             foreign_table,
+                            on_delete,
                         }
                     }
                     _ => Err(format!("unsupported constraint: {constraint:?}"))?,
@@ -1039,14 +1064,12 @@ impl Ast {
             storage,
             location,
         }) = hive_formats
-        {
-            if row_format.is_some()
+            && (row_format.is_some()
                 || serde_properties.is_some()
                 || storage.is_some()
-                || location.is_some()
-            {
-                Err("hive formats are not supported in create table")?
-            }
+                || location.is_some())
+        {
+            Err("hive formats are not supported in create table")?
         }
 
         if !table_properties.is_empty() {
@@ -1758,6 +1781,7 @@ impl Ast {
                     columns,
                     referred_columns,
                     foreign_table,
+                    on_delete,
                 } => {
                     buf.write_all(b"FOREIGN KEY (")?;
                     for (pos, column) in columns.iter().enumerate() {
@@ -1776,6 +1800,15 @@ impl Ast {
                         }
                     }
                     buf.write_all(b")")?;
+
+                    if let Some(delete_action) = on_delete {
+                        buf.write_all(b" ON DELETE ")?;
+                        match delete_action {
+                            OnDeleteAction::Cascade => buf.write_all(b"CASCADE")?,
+                            OnDeleteAction::SetNull => buf.write_all(b"SET NULL")?,
+                            OnDeleteAction::Restrict => buf.write_all(b"RESTRICT")?,
+                        }
+                    }
                 }
             }
             if pos != constraints.len() - 1 {
@@ -1889,13 +1922,13 @@ impl Ast {
                             buf.write_all(b" JOIN ")?;
                             Self::write_quoted(dialect, buf, &table.name);
                             buf.write_all(b" ON ")?;
-                            Self::selection_to_sql(dialect, buf, &selection)?;
+                            Self::selection_to_sql(dialect, buf, selection)?;
                         }
                         JoinOperator::Inner(selection) => {
                             buf.write_all(b" INNER JOIN ")?;
                             Self::write_quoted(dialect, buf, &table.name);
                             buf.write_all(b" ON ")?;
-                            Self::selection_to_sql(dialect, buf, &selection)?;
+                            Self::selection_to_sql(dialect, buf, selection)?;
                         }
                     }
                 }
