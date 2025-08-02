@@ -4,7 +4,7 @@ use anyhow::Result;
 use sqlx_repo::prelude::*;
 use tempfile::NamedTempFile;
 
-#[repo(Send + Sync)]
+#[repo(Send + Sync + std::fmt::Debug)]
 impl Repo for DatabaseRepository {
     async fn create_tables_and_insert_data(&self) -> Result<()> {
         let query = query!(
@@ -86,7 +86,12 @@ async fn test_database_creation_disallow_creation() {
         file.path().to_str().unwrap()
     );
     drop(file);
-    assert!(<dyn Repo>::new(&url).await.is_err());
+    let res = <dyn Repo>::new(&url).await;
+    assert!(res.is_err());
+    assert_eq!(
+        "error returned from database: (code: 14) unable to open database file",
+        res.unwrap_err().to_string()
+    )
 }
 
 #[tokio::test]
