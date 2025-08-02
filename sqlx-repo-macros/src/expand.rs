@@ -354,11 +354,13 @@ impl Expander {
                     Result<Box<dyn #trait_name>, Box<dyn std::error::Error + Send + Sync + 'static>>
                 {
                     let mut database_url = url::Url::parse(database_url)?;
-                    let mut params: std::collections::HashMap<std::borrow::Cow<str>, std::borrow::Cow<str>> = database_url
+                    let mut params: std::collections::HashMap<String, String> = database_url
                         .query_pairs()
+                        .map(|(key, value)| (key.to_string(), value.to_string()))
                         .collect();
                     let db: Box<dyn #trait_name> = match database_url.scheme() {
                         "sqlite" => {
+                            database_url.set_query(None);
                             let mut sqlite_options: sqlx::sqlite::SqliteConnectOptions = database_url
                                 .as_str()
                                 .parse()?;
