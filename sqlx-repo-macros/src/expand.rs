@@ -370,6 +370,9 @@ impl Expander {
                             if let Some(param) = params.get("foreign_keys") && (param == "off" || param == "false") {
                                 sqlite_options = sqlite_options.foreign_keys(false);
                             }
+                            if let Some(param) = params.get("create_if_missing") && (param == "off" || param == "false") {
+                                sqlite_options = sqlite_options.create_if_missing(false);
+                            }
                             let pool = sqlx::Pool::<sqlx::Sqlite>::connect_with(sqlite_options).await?;
                             Box::new(
                                 DatabaseRepository::new( database_url.as_ref(), pool).await?
