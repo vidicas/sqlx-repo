@@ -357,34 +357,29 @@ impl Expander {
                     let mut params: std::collections::HashMap<std::borrow::Cow<str>, std::borrow::Cow<str>> = database_url.query_pairs().collect();
                     let db: Box<dyn #trait_name> = match database_url.scheme() {
                         "sqlite" => {
-                            if !params.contains_key("mode") {
-                                params.insert("mode".into(), "rwc".into());
-                            };
-                            let query = params
-                                .into_iter()
-                                .map(|(key, value)| format!("{key}={value}"))
-                                .collect::<Vec<_>>()
-                                .join("&");
-                            database_url.set_query(Some(&query));
+                            let mut sqlite_options: sqlx::sqlite::SqliteConnectOptions = database_url
+                                .as_str()
+                                .parse()?;
+                            sqlite_options = sqlite_options
+                                .foreign_keys(true)
+                                .create_if_missing(true);
+                            let pool = sqlx::Pool::<sqlx::Sqlite>::connect_with(sqlite_options).await?;
                             Box::new(
-                                DatabaseRepository::<sqlx::Sqlite>::new(
-                                    database_url.as_ref(),
-                                )
-                                .await?,
+                                DatabaseRepository::new( database_url.as_ref(), pool).await?
                             )
                         }
-                        "postgres" => Box::new(
-                            DatabaseRepository::<sqlx::Postgres>::new(
-                                database_url.as_ref(),
+                        "postgres" => {
+                            let pool = sqlx::Pool::<sqlx::Postgres>::connect(database_url.as_str()).await?;
+                            Box::new(
+                                DatabaseRepository::new( database_url.as_str(), pool ).await?
                             )
-                            .await?,
-                        ),
-                        "mysql" => Box::new(
-                            DatabaseRepository::<sqlx::MySql>::new(
-                                database_url.as_ref(),
+                        },
+                        "mysql" => {
+                            let pool = sqlx::Pool::<sqlx::MySql>::connect(database_url.as_str()).await?;
+                            Box::new(
+                                DatabaseRepository::new(database_url.as_str(), pool).await?
                             )
-                            .await?,
-                        ),
+                        },
                         unsupported => Err(format!("unsupported database: {unsupported}"))?,
                     };
                     Ok(db)
@@ -754,9 +749,7 @@ where
 
         assert!(
             pretty_expanded_item == expected,
-            "got:\n{}\nexpected:\n{}\n",
-            pretty_expanded_item,
-            expected
+            "got:\n{pretty_expanded_item}\nexpected:\n{expected}\n"
         );
 
         let expected = "\
@@ -844,9 +837,7 @@ pub trait Repo {
         let generated_trait = prettify(syn::parse2(trait_impl).unwrap());
         assert!(
             generated_trait == expected,
-            "got:\n{}\nexpected:\n{}\n",
-            generated_trait,
-            expected
+            "got:\n{generated_trait}\nexpected:\n{expected}\n"
         );
     }
 
