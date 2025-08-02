@@ -354,7 +354,9 @@ impl Expander {
                     Result<Box<dyn #trait_name>, Box<dyn std::error::Error + Send + Sync + 'static>>
                 {
                     let mut database_url = url::Url::parse(database_url)?;
-                    let mut params: std::collections::HashMap<std::borrow::Cow<str>, std::borrow::Cow<str>> = database_url.query_pairs().collect();
+                    let mut params: std::collections::HashMap<std::borrow::Cow<str>, std::borrow::Cow<str>> = database_url
+                        .query_pairs()
+                        .collect();
                     let db: Box<dyn #trait_name> = match database_url.scheme() {
                         "sqlite" => {
                             let mut sqlite_options: sqlx::sqlite::SqliteConnectOptions = database_url
@@ -363,6 +365,9 @@ impl Expander {
                             sqlite_options = sqlite_options
                                 .foreign_keys(true)
                                 .create_if_missing(true);
+                            if let Some(param) = params.get("foreign_keys") && (param == "off" || param == "false") {
+                                sqlite_options = sqlite_options.foreign_keys(false);
+                            }
                             let pool = sqlx::Pool::<sqlx::Sqlite>::connect_with(sqlite_options).await?;
                             Box::new(
                                 DatabaseRepository::new( database_url.as_ref(), pool).await?
