@@ -11,7 +11,13 @@ use std::{
 
 use sqlparser::{
     ast::{
-        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, CreateTableOptions, Delete, ExactNumberInfo, Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn, JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value, ValueWithSpan
+        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
+        ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, CreateTableOptions,
+        Delete, ExactNumberInfo, Expr, FromTable, FunctionArguments, HiveDistributionStyle,
+        HiveFormat, Ident, IndexColumn, JoinConstraint, ObjectName, ObjectNamePart, ObjectType,
+        OrderByExpr, Query, ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement,
+        Table, TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value,
+        ValueWithSpan,
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -404,15 +410,37 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         if characteristics.is_some() {
                             Err("PRIMARY KEY with characteristics is not supported")?
                         }
-                        Constraint::PrimaryKey(
-                            columns
-                                .iter()
-                                .map(|IndexColumn{ column, operator_class }| {
-                                    panic!("column: {column:?}, operator_class: {operator_class:?}")
-                                    //value.clone())
-                                })
-                                .collect(),
-                        )
+                        let columns = columns
+                            .iter()
+                            .map(
+                                |IndexColumn {
+                                     column,
+                                     operator_class,
+                                 }| {
+                                    if operator_class.is_some() {
+                                        Err("PRIMARY KEY with operator class is not supported")?;
+                                    };
+                                    let OrderByExpr {
+                                        expr,
+                                        options,
+                                        with_fill,
+                                    } = column;
+                                    if with_fill.is_some() {
+                                        Err("PRIMARY KEY with `WITH FILL` is not supported")?;
+                                    }
+                                    if options.nulls_first.is_some() || options.asc.is_some() {
+                                        Err("PRIMARY KEY with options is not supported")?;
+                                    }
+                                    match expr {
+                                        Expr::Identifier(ident) => Ok(ident.value.clone()),
+                                        _ => Err(format!(
+                                            "Unsupported expression {expr:?} in PRIMARY KEY"
+                                        ))?,
+                                    }
+                                },
+                            )
+                            .collect::<Result<Vec<_>>>()?;
+                        Constraint::PrimaryKey(columns)
                     }
                     TableConstraint::ForeignKey {
                         name,
@@ -937,7 +965,9 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
             sqlparser::ast::AlterTableOperation::RenameTable { table_name } => {
                 let table_name = match table_name {
                     // only mysql
-                    sqlparser::ast::RenameTableNameKind::As(_) => Err("ALTER TABLE with AS keyword is not supported")?,
+                    sqlparser::ast::RenameTableNameKind::As(_) => {
+                        Err("ALTER TABLE with AS keyword is not supported")?
+                    }
                     sqlparser::ast::RenameTableNameKind::To(table_name) => table_name,
                 };
                 AlterTableOperation::RenameTable {
@@ -985,7 +1015,9 @@ impl Ast {
         match name_parts.first() {
             None => Err("failed to parse object name, name parts are empty")?,
             Some(ObjectNamePart::Identifier(ident)) => Ok(ident.value.clone()),
-            Some(ObjectNamePart::Function(_)) => Err("failed to parse object name, function names are not supported")?
+            Some(ObjectNamePart::Function(_)) => {
+                Err("failed to parse object name, function names are not supported")?
+            }
         }
     }
 
@@ -1202,17 +1234,17 @@ impl Ast {
         }
         match table_options {
             CreateTableOptions::None => (),
-            _ => Err("table options are not supported in create table")?
+            _ => Err("table options are not supported in create table")?,
         };
-        
+
         if version.is_some() {
             Err("versions are not supported in create table")?
         }
-        
+
         // Snowflake "TARGET_LAG" clause for dybamic tables
         if target_lag.is_some() {
             Err("target lag is not supportec in create table")?
-        } 
+        }
         // Snowflake "WAREHOUSE" clause for dybamic tables
         if warehouse.is_some() {
             Err("warehouse is not supported in create table")?
@@ -1245,6 +1277,7 @@ impl Ast {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_alter_table(
         name: &ObjectName,
         if_exists: bool,
