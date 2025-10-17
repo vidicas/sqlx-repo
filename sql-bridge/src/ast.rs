@@ -11,12 +11,7 @@ use std::{
 
 use sqlparser::{
     ast::{
-        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
-        ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, Delete, ExactNumberInfo,
-        Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn,
-        JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query,
-        ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement, Table,
-        TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value, ValueWithSpan,
+        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef, ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, CreateTableOptions, Delete, ExactNumberInfo, Expr, FromTable, FunctionArguments, HiveDistributionStyle, HiveFormat, Ident, IndexColumn, JoinConstraint, ObjectName, ObjectNamePart, ObjectType, OrderByExpr, Query, ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement, Table, TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value, ValueWithSpan
     },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
@@ -44,7 +39,7 @@ pub enum DataType {
     Bytes,
     Json,
     Uuid,
-    Decimal { precision: u64, scale: u64 },
+    Decimal { precision: u64, scale: i64 },
     Date,
     Time,
     Timestamp,
@@ -106,10 +101,11 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
 }
 
 fn extract_serial(name_parts: &[ObjectNamePart]) -> Option<DataType> {
-    if name_parts.len() != 1 {
-        return None;
-    }
-    let ObjectNamePart::Identifier(name) = name_parts.first().unwrap();
+    let name = match name_parts.first() {
+        None => return None,
+        Some(ObjectNamePart::Function(_)) => return None,
+        Some(ObjectNamePart::Identifier(name)) => name,
+    };
     let name = name.value.to_ascii_lowercase();
     match name.as_str() {
         "bigserial" => Some(DataType::BigSerial),
@@ -411,7 +407,10 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         Constraint::PrimaryKey(
                             columns
                                 .iter()
-                                .map(|Ident { value, .. }| value.clone())
+                                .map(|IndexColumn{ column, operator_class }| {
+                                    panic!("column: {column:?}, operator_class: {operator_class:?}")
+                                    //value.clone())
+                                })
                                 .collect(),
                         )
                     }
@@ -423,6 +422,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         on_delete,
                         on_update,
                         characteristics,
+                        index_name,
                     } => {
                         if name.is_some() {
                             Err("named foreign key constraint is not supported")?
@@ -935,6 +935,11 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 AlterTableOperation::AddColumn { column }
             }
             sqlparser::ast::AlterTableOperation::RenameTable { table_name } => {
+                let table_name = match table_name {
+                    // only mysql
+                    sqlparser::ast::RenameTableNameKind::As(_) => Err("ALTER TABLE with AS keyword is not supported")?,
+                    sqlparser::ast::RenameTableNameKind::To(table_name) => table_name,
+                };
                 AlterTableOperation::RenameTable {
                     to: Ast::parse_object_name(table_name)?,
                 }
@@ -947,9 +952,10 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 to: new_column_name.value.clone(),
             },
             sqlparser::ast::AlterTableOperation::DropColumn {
-                column_name,
                 if_exists,
                 drop_behavior,
+                has_column_keyword,
+                column_names,
             } => {
                 if *if_exists {
                     Err("`IF EXISTS` is not supported in `ALTER TABLE DROP COLUMN`")?
@@ -957,8 +963,11 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 if drop_behavior.is_some() {
                     Err("drop behaviour is not supported in `ALTER TABLE DROP COLUMN`")?;
                 }
+                if column_names.len() > 1 {
+                    Err("multiple columns names is not supported in `ALTER TABLE DROP COLUMN`")?
+                }
                 AlterTableOperation::DropColumn {
-                    name: column_name.value.clone(),
+                    name: column_names.first().unwrap().value.clone(),
                 }
             }
             _ => Err(format!("unsupported operation: {op:?}"))?,
@@ -973,8 +982,11 @@ impl Ast {
         if name_parts.len() > 1 {
             Err("schema-qualified names are not supported")?
         }
-        let ObjectNamePart::Identifier(ident) = name_parts.first().unwrap();
-        Ok(ident.value.clone())
+        match name_parts.first() {
+            None => Err("failed to parse object name, name parts are empty")?,
+            Some(ObjectNamePart::Identifier(ident)) => Ok(ident.value.clone()),
+            Some(ObjectNamePart::Function(_)) => Err("failed to parse object name, function names are not supported")?
+        }
     }
 
     fn parse_create_table(
@@ -992,19 +1004,13 @@ impl Ast {
             constraints,
             hive_distribution,
             hive_formats,
-            table_properties,
-            with_options,
             file_format,
             location,
             query,
             without_rowid,
             like,
             clone,
-            engine,
             comment,
-            auto_increment_offset,
-            default_charset,
-            collation,
             on_commit,
             on_cluster,
             primary_key,
@@ -1012,7 +1018,6 @@ impl Ast {
             partition_by,
             cluster_by,
             clustered_by,
-            options,
             inherits,
             strict,
             copy_grants,
@@ -1029,6 +1034,14 @@ impl Ast {
             catalog,
             catalog_sync,
             storage_serialization_policy,
+            dynamic,
+            table_options,
+            version,
+            target_lag,
+            warehouse,
+            refresh_mode,
+            initialize,
+            require_user,
         }: &SqlParserCreateTable,
     ) -> Result<Ast> {
         if *or_replace {
@@ -1072,12 +1085,6 @@ impl Ast {
             Err("hive formats are not supported in create table")?
         }
 
-        if !table_properties.is_empty() {
-            Err("table properties is not supported in create table")?
-        }
-        if !with_options.is_empty() {
-            Err("'with options' is not supported in create table")?
-        }
         if file_format.is_some() {
             Err("file format is not supported in create table")?
         }
@@ -1096,115 +1103,131 @@ impl Ast {
         if clone.is_some() {
             Err("clone is not supported in create table")?
         }
-        if engine.is_some() {
-            Err("engine is not supported in create table")?
-        }
         if comment.is_some() {
             Err("comment is not supported in create table")?
-        }
-        if auto_increment_offset.is_some() {
-            Err("auto increment offset is not supported in create table")?
-        }
-        if default_charset.is_some() {
-            Err("default charset is not supported in create table")?
-        }
-        if collation.is_some() {
-            Err("collation is not supported in create table")?
         }
         if on_commit.is_some() {
             Err("'on commit' is not supported in create table")?
         }
-        /// ClickHouse "ON CLUSTER" clause:
+        // ClickHouse "ON CLUSTER" clause:
         if on_cluster.is_some() {
             Err("'on cluster' is not supported in create table")?
         }
-        /// ClickHouse "PRIMARY KEY " clause.
+        // ClickHouse "PRIMARY KEY " clause.
         if primary_key.is_some() {
             Err("primary key is not supported in create table")?
         }
-        /// ClickHouse "ORDER BY " clause.
+        // ClickHouse "ORDER BY " clause.
         if order_by.is_some() {
             Err("'order by' is not supported in create table")?
         }
-        /// BigQuery: A partition expression for the table.
+        // BigQuery: A partition expression for the table.
         if partition_by.is_some() {
             Err("'partition by' is not supported in create table")?
         }
-        /// BigQuery: Table clustering column list.
+        // BigQuery: Table clustering column list.
         if cluster_by.is_some() {
             Err("'cluster_by' is not supported in create table")?
         }
-        /// Hive: Table clustering column list.
+        // Hive: Table clustering column list.
         if clustered_by.is_some() {
             Err("'clustered_by' is not supported in create table")?
         }
-        /// BigQuery: Table options list.
-        if options.is_some() {
-            Err("options are not supported in create table")?
-        }
-        /// Postgres `INHERITs` clause, which contains the list of tables from which the new table inherits.
+        // Postgres `INHERITs` clause, which contains the list of tables from which the new table inherits.
         if inherits.is_some() {
             Err("inherits are not supported in create table")?
         }
-        /// SQLite "STRICT" clause.
+        // SQLite "STRICT" clause.
         if *strict {
             Err("strict is not supported in create table")?
         }
-        /// Snowflake "COPY GRANTS" clause.
+        // Snowflake "COPY GRANTS" clause.
         if *copy_grants {
             Err("copy grant is not supported in create table")?
         }
-        /// Snowflake "ENABLE_SCHEMA_EVOLUTION" clause.
+        // Snowflake "ENABLE_SCHEMA_EVOLUTION" clause.
         if enable_schema_evolution.is_some() {
             Err("'enable schema evolution' is not supported in create table")?
         }
-        /// Snowflake "CHANGE_TRACKING" clause.
+        // Snowflake "CHANGE_TRACKING" clause.
         if change_tracking.is_some() {
             Err("'change tracking' is not supported in create table")?
         }
-        /// Snowflake "DATA_RETENTION_TIME_IN_DAYS" clause.
+        // Snowflake "DATA_RETENTION_TIME_IN_DAYS" clause.
         if data_retention_time_in_days.is_some() {
             Err("'data retention time in days' is not supported in create table")?
         }
-        /// Snowflake "MAX_DATA_EXTENSION_TIME_IN_DAYS" clause.
+        // Snowflake "MAX_DATA_EXTENSION_TIME_IN_DAYS" clause.
         if max_data_extension_time_in_days.is_some() {
             Err("'max data extension time in days' is not supported in create table")?
         }
-        /// Snowflake "DEFAULT_DDL_COLLATION" clause.
+        // Snowflake "DEFAULT_DDL_COLLATION" clause.
         if default_ddl_collation.is_some() {
             Err("'default ddl collation' is not supported in create table")?
         }
-        /// Snowflake "WITH AGGREGATION POLICY" clause.
+        // Snowflake "WITH AGGREGATION POLICY" clause.
         if with_aggregation_policy.is_some() {
             Err("'with aggregation policy' is not supported in create table")?
         }
-        /// Snowflake "WITH ROW ACCESS POLICY" clause.
+        // Snowflake "WITH ROW ACCESS POLICY" clause.
         if with_row_access_policy.is_some() {
             Err("'with row access policy' is not supported in create table")?
         }
-        /// Snowflake "WITH TAG" clause.
+        // Snowflake "WITH TAG" clause.
         if with_tags.is_some() {
             Err("'with tags' is not supported in create table")?
         }
-        /// Snowflake "EXTERNAL_VOLUME" clause for Iceberg tables
+        // Snowflake "EXTERNAL_VOLUME" clause for Iceberg tables
         if external_volume.is_some() {
             Err("'external volume' is not supported in create table")?
         }
-        /// Snowflake "BASE_LOCATION" clause for Iceberg tables
+        // Snowflake "BASE_LOCATION" clause for Iceberg tables
         if base_location.is_some() {
             Err("'base location' is not supported in create table")?
         }
-        /// Snowflake "CATALOG" clause for Iceberg tables
+        // Snowflake "CATALOG" clause for Iceberg tables
         if catalog.is_some() {
             Err("catalog is not supported in create table")?
         }
-        /// Snowflake "CATALOG_SYNC" clause for Iceberg tables
+        // Snowflake "CATALOG_SYNC" clause for Iceberg tables
         if catalog_sync.is_some() {
             Err("'catalog sync' is not supported in create table")?
         }
-        /// Snowflake "STORAGE_SERIALIZATION_POLICY" clause for Iceberg tables
+        // Snowflake "STORAGE_SERIALIZATION_POLICY" clause for Iceberg tables
         if storage_serialization_policy.is_some() {
             Err("'storage serialization policy' is not supported in create table")?
+        }
+        if *dynamic {
+            Err("'dynamic' is not supported in create table")?
+        }
+        match table_options {
+            CreateTableOptions::None => (),
+            _ => Err("table options are not supported in create table")?
+        };
+        
+        if version.is_some() {
+            Err("versions are not supported in create table")?
+        }
+        
+        // Snowflake "TARGET_LAG" clause for dybamic tables
+        if target_lag.is_some() {
+            Err("target lag is not supportec in create table")?
+        } 
+        // Snowflake "WAREHOUSE" clause for dybamic tables
+        if warehouse.is_some() {
+            Err("warehouse is not supported in create table")?
+        }
+        // Snowflake "REFRESH_MODE" clause for dybamic tables
+        if refresh_mode.is_some() {
+            Err("refresh mode is not supported in create table")?
+        }
+        // Snowflake "INITIALIZE" clause for dybamic tables
+        if initialize.is_some() {
+            Err("initialize is not supported in create table")?
+        }
+        // Snowflake "REQUIRE USER" clause for dybamic tables
+        if *require_user {
+            Err("require user is not supported in create table")?
         }
 
         let name = Self::parse_object_name(name)?;
@@ -1229,6 +1252,8 @@ impl Ast {
         operations: &[sqlparser::ast::AlterTableOperation],
         location: Option<&sqlparser::ast::HiveSetLocation>,
         on_cluster: Option<&Ident>,
+        iceberg: bool,
+        _end_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
     ) -> Result<Ast> {
         // sqlite doesn't support if exists in alter
         if if_exists {
@@ -1245,6 +1270,10 @@ impl Ast {
         // hive syntax
         if location.is_some() {
             Err("LOCATION syntax is not supported")?
+        }
+        // iceberg syntax
+        if iceberg {
+            Err("ICEBERG syntax is not supported")?
         }
         let name = Self::parse_object_name(name)?;
         if operations.len() != 1 {
@@ -1309,6 +1338,8 @@ impl Ast {
             nulls_distinct,
             with,
             predicate,
+            index_options,
+            alter_options,
         }: &CreateIndex,
     ) -> Result<Self> {
         if *if_not_exists {
@@ -1334,6 +1365,14 @@ impl Ast {
         }
         if predicate.is_some() {
             Err("`CREATE INDEX` with predicates is not supported")?
+        }
+        // PG only
+        if !index_options.is_empty() {
+            Err("`CREATE INDEX` with index options is not supported")?
+        }
+        // Mysql only
+        if !alter_options.is_empty() {
+            Err("`CREATE INDEX` with alter options is not supported")?
         }
         let columns = columns
             .iter()
@@ -1595,6 +1634,7 @@ impl Ast {
         selection: Option<&Expr>,
         returning: Option<&[SelectItem]>,
         or: Option<&SqliteOnConflict>,
+        limit: Option<&Expr>,
     ) -> Result<Ast> {
         if from.is_some() {
             Err("update from table from kind is not supported")?
@@ -1604,6 +1644,9 @@ impl Ast {
         }
         if or.is_some() {
             Err("update with OR is not supported")?
+        }
+        if limit.is_some() {
+            Err("update with LIMIT is not supported")?
         }
         let table = match &table.relation {
             TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
@@ -1703,6 +1746,8 @@ impl Ast {
                         operations,
                         location,
                         on_cluster,
+                        iceberg,
+                        end_token,
                     } => Self::parse_alter_table(
                         name,
                         *if_exists,
@@ -1710,6 +1755,8 @@ impl Ast {
                         operations.as_slice(),
                         location.as_ref(),
                         on_cluster.as_ref(),
+                        *iceberg,
+                        end_token,
                     )?,
                     Statement::CreateIndex(index) => Self::parse_create_index(index)?,
                     Statement::Query(query) => Self::parse_query(query)?,
@@ -1731,6 +1778,7 @@ impl Ast {
                         selection,
                         returning,
                         or,
+                        limit,
                     } => Self::parse_update(
                         table,
                         assignments.as_slice(),
@@ -1738,6 +1786,7 @@ impl Ast {
                         selection.as_ref(),
                         returning.as_deref(),
                         or.as_ref(),
+                        limit.as_ref(),
                     )?,
                     Statement::Delete(delete) => Self::parse_delete(delete)?,
                     _ => Err(format!("unsupported statement: {statement:?}"))?,
