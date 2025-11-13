@@ -90,7 +90,7 @@
 //!
 //! ### Supported types
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE test (
 //!     id32 SERIAL PRIMARY KEY,
 //!     i16 SMALLINT,
@@ -114,30 +114,30 @@
 //!
 //! ### Primary Key
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE test (id SMALLSERIAL PRIMARY KEY);
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE test (id SERIAL PRIMARY KEY);
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE test (id BIGSERIAL PRIMARY KEY);
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT);
 //! ```
 //!
 //! Composite primary key supported as well:
-//! ```
+//! ```sql
 //! CREATE TABLE test(left INT, right INT, value TEXT, PRIMARY KEY (left, right));
 //! ```
 //!
 //! ### Foreign key
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE employees (
 //!     emp_id INT PRIMARY KEY,
 //!     dept_id INT,
@@ -152,7 +152,7 @@
 //!
 //! Supported actions `ON DELETE` are `CASCADE`, `SET NULL`, `RESTRICT`:
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE employees (
 //!     emp_id INT PRIMARY KEY,
 //!     dept_id INT,
@@ -160,7 +160,7 @@
 //! );
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE employees (
 //!     emp_id INT PRIMARY KEY,
 //!     dept_id INT,
@@ -168,7 +168,7 @@
 //! );
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE TABLE employees (
 //!     emp_id INT PRIMARY KEY,
 //!     dept_id INT,
@@ -178,149 +178,149 @@
 //!
 //! ## Alter table
 //!
-//! ```
+//! ```sql
 //! ALTER TABLE test RENAME TO foo;
 //! ```
 //!
-//! ```
+//! ```sql
 //! ALTER TABLE test ADD COLUMN foo INT;
 //! ```
 //!
-//! ```
+//! ```sql
 //! ALTER TABLE test DROP COLUMN foo;
 //! ```
 //!
-//! ```
+//! ```sql
 //! ALTER TABLE test RENAME COLUMN old_col TO new_col;
 //! ```
 //!
 //! ## Create index
 //!
-//! ```
+//! ```sql
 //! CREATE INDEX idx ON table_name (id, org);
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE UNIQUE INDEX idx ON table_name (id, org);
 //! ```
 //!
-//! ```
+//! ```sql
 //! CREATE INDEX IF NOT EXISTS idx ON table_name (id, org);
 //! ```
 //!
 //! ## Drop
 //!
-//! ```
+//! ```sql
 //! DROP TABLE test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! DROP TABLE IF EXISTS test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! DROP INDEX idx ON test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! DROP INDEX IF EXISTS idx ON test;
 //! ```
 //!
 //! ## Insert
 //!
-//! ```
+//! ```sql
 //! INSERT INTO TEST(id, key, value) VALUES(NULL, 1, "one"), (NULL, 2, "two");
 //! ```
 //!
 //! With placeholders:
-//! ```
+//! ```sql
 //! INSERT INTO TEST(id, key, value) VALUES(?, ?, ?), (?, ?, ?);
 //! ```
 //!
 //! With placeholders casts:
-//! ```
+//! ```sql
 //! INSERT INTO TEST(id, key, value) VALUES(?::json, ?::uuid, ?);
 //! ```
 //!
 //! ## Update
 //!
-//! ```
+//! ```sql
 //! UPDATE TEST SET value="foo" WHERE key = 1;
 //! ```
 //!
 //! ## Select
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT id, key, * FROM test;
 //! ```
 //!
 //! Two-parts compound identifiers are supported:
-//! ```
+//! ```sql
 //! SELECT test.id, key FROM test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT test.id, test.key, * FROM test;
 //! ```
 //!
 //! ### Count
 //!
-//! ```
+//! ```sql
 //! SELECT count(*) FROM test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT count(id) FROM test;
 //! ```
 //!
 //! ### Group by
 //!
-//! ```
+//! ```sql
 //! SELECT key, COUNT(*) FROM test GROUP BY key;
 //! ```
 //!
 //! ### Order by
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test ORDER BY id ASC, key DESC;
 //! ```
 //!
 //! ### Where
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test WHERE id = 1 AND key = "foo";
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test WHERE id = ?;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test WHERE id = ? AND value = ? OR id = ?;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test WHERE id IN (1, "2", ?);
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM test WHERE id NOT IN (1, "2", ?);
 //! ```
 //!
 //! ### Join
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM foo
 //!     JOIN bar ON foo.id = bar.id
 //!     JOIN baz ON foo.id = baz.id
 //! ;
 //! ```
 //!
-//! ```
+//! ```sql
 //! SELECT * FROM foo
 //!     INNER JOIN bar ON foo.id = bar.id
 //!     INNER JOIN baz ON foo.id = baz.id
@@ -328,11 +328,11 @@
 //! ```
 //!
 //! ## Delete
-//! ```
+//! ```sql
 //! DELETE FROM test;
 //! ```
 //!
-//! ```
+//! ```sql
 //! DELETE FROM test WHERE key = 1;
 //! ```
 mod ext;
