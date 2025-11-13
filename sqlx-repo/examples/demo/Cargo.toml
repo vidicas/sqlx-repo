@@ -6,5 +6,5 @@ edition = "2024"
 [workspace]
 [dependencies]
 sqlx-repo = { path = "../.." }
-anyhow = "1.0.98"
-tokio = { version = "1.44", features = ["full"] }
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }

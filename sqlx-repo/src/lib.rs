@@ -143,8 +143,7 @@
 //!     dept_id INT,
 //!     location_id INT,
 //!     name TEXT,
-//!     FOREIGN KEY (dept_id, location_id)
-//!         REFERENCES departments(dept_id, location_id)
+//!     FOREIGN KEY (dept_id, location_id) REFERENCES departments(dept_id, location_id)
 //! );
 //! ```
 //!
