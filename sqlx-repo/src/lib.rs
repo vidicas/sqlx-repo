@@ -337,6 +337,7 @@
 mod ext;
 mod migrator;
 
+#[doc(hidden)]
 pub use ext::AcquireExt;
 
 pub struct DatabaseRepository<D>
@@ -380,6 +381,7 @@ impl<D: sqlx::Database> DatabaseRepository<D> {
     }
 }
 
+#[doc(hidden)]
 pub trait SqlxDBNum: std::fmt::Debug {
     fn pos() -> usize {
         usize::MAX
