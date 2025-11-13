@@ -2,10 +2,12 @@
 name = "sqlx-repo"
 version = "0.1.0"
 edition = "2024"
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 futures = "0.3"
-sqlx-repo-macros = { path = "../sqlx-repo-macros" }
+sqlx-repo-macros = "0.1"
 serde_json = "1"
 sqlx = { version = "0.8", features = [
     "chrono",
