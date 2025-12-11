@@ -1,2 +1,5 @@
 target
 Cargo.lock
+
+/sqlx-repo-ui/node_modules/
+/sqlx-repo-ui/public/*.br

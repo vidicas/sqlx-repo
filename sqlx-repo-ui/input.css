@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@source "./src/**/*.{rs,html,css}";
+
+@plugin "@tailwindcss/typography";
+@plugin "daisyui"
+
+fieldset {
+    @apply outline-none;
+}
+
+*:focus {
+    @apply outline-none;
+}

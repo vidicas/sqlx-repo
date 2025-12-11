@@ -2,6 +2,7 @@
 members = [
     "sqlx-repo",
     "sqlx-repo-macros",
+    "sqlx-repo-ui",
     "sql-bridge",
 ]
 resolver = "3"
@@ -9,7 +10,7 @@ resolver = "3"
 [workspace.package]
 authors = [
     "Dmitriy Mazurin <dimasm19@gmail.com>",
-    "Victoria Terenina <torymur@gmail.com>"
+    "Victoria Terenina <torymur@gmail.com>",
 ]
 license = "MIT or Apache-2.0"
 readme = "README.md"
