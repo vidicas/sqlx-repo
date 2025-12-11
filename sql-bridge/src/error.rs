@@ -1,113 +1,203 @@
-use sqlparser::ast::{BinaryOperator, ColumnOption, DataType, Expr, ReferentialAction, TableConstraint, Value};
+use sqlparser::ast::{
+    BinaryOperator, ColumnOption, DataType, Expr, JoinConstraint, JoinOperator, ReferentialAction,
+    TableConstraint, TableFactor, TableWithJoins, Value,
+};
 
 use crate::ast::Selection;
 
 #[derive(Debug)]
 pub enum Error {
-    UnsupportedDataType {
+    DataType {
         data_type: DataType,
     },
-    UnsupportedColumnOption {
+    ColumnOption {
         option: ColumnOption,
     },
-    UnsupportedOnDeleteConstrait {
+    OnDeleteConstrait {
         referential_action: ReferentialAction,
     },
-    UnsupportedPrimaryKey {
+    PrimaryKey {
         reason: &'static str,
     },
-    UnsupportedPrimaryKeyWithExpression {
+    PrimaryKeyWithExpression {
         expr: Expr,
     },
-    UnsupportedForeignKey {
+    ForeignKey {
         reason: &'static str,
     },
-    UnsupportedTableConstraint {
+    TableConstraint {
         constraint: TableConstraint,
     },
-    UnsupportedCompoundIdentifier {
+    CompoundIdentifier {
         length: usize,
     },
-    UnsupportedSelectionValue {
-        value: Value
+    SelectionValue {
+        value: Value,
     },
-    UnsupportedSelection {
+    Selection {
         selection: Selection,
-        r#where: Option<&'static str>
+        r#where: Option<&'static str>,
     },
-    UnsupportedSelectionFromExpr {
+    SelectionFromExpr {
         expr: Expr,
     },
-    UnsupportedInsertSourceExpression{ expr: Expr },
-    UnsupportedInsertSourceValue{ value: Value },
-    UnsupportedUpdateExpression { expr: Expr },
-    UnsupportedUpdateValue { value: Value},
-    UnsupportedBinaryOperator {
-        op: BinaryOperator
-    }
+    InsertSourceExpression {
+        expr: Expr,
+    },
+    InsertSourceValue {
+        value: Value,
+    },
+    UpdateExpression {
+        expr: Expr,
+    },
+    UpdateValue {
+        value: Value,
+    },
+    BinaryOperator {
+        op: BinaryOperator,
+    },
+    Keyword {
+        keyword: &'static str,
+    },
+    JoinConstraint {
+        constraint: JoinConstraint,
+    },
+    JoinOperator {
+        op: JoinOperator,
+    },
+    TableAlias,
+    /// Postgre + MSSQL
+    TableValuedFunctions,
+    ///  MSSQL-specific `WITH (...)` hints such as NOLOCK.
+    TableWithHints,
+    /// Table time-travel, as supported by BigQuery and MSSQL.
+    TableVersioning,
+    /// Postgres.
+    TableWithOrdinality,
+    /// Mysql
+    TableWithPartitions,
+    /// Optional PartiQL JsonPath: <https://partiql.org/dql/from.html>
+    TableWithJsonPath,
+    /// Optional table sample modifier
+    /// See: <https://jakewheat.github.io/sql-overview/sql-2016-foundation-grammar.html#sample-clause>
+    TableWithSampleModifier,
+    /// Optional index hints(mysql)
+    /// See: <https://dev.mysql.com/doc/refman/8.4/en/index-hints.html>
+    TableWithIndexHints,
+    TableFactor {
+        factor: TableFactor,
+    },
+    TableJoins {
+        table_joins: Vec<TableWithJoins>,
+    },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnsupportedDataType { data_type } => {
+            Error::DataType { data_type } => {
                 write!(f, "unsupported data type: {data_type:?}")
             }
-            Self::UnsupportedColumnOption { option } => {
+            Error::ColumnOption { option } => {
                 write!(f, "unsupported column option: {option:?}")
             }
-            Self::UnsupportedOnDeleteConstrait { referential_action } => {
+            Error::OnDeleteConstrait { referential_action } => {
                 write!(
                     f,
                     "unsupported on delete constraint in foreign key: {}",
                     referential_action
                 )
             }
-            Self::UnsupportedPrimaryKey { reason } => {
+            Error::PrimaryKey { reason } => {
                 write!(f, "unsupported primary key with {}", reason)
             }
-            Self::UnsupportedPrimaryKeyWithExpression { expr } => {
-                write!(f, "unsupported primary key with unsupported expression: {expr:?}")
-            }
-            Self::UnsupportedForeignKey { reason } => {
-                write!(f, "unsupported foreign key with {}", reason)
-            }
-            Self::UnsupportedTableConstraint { constraint } => {
-                write!(f, "unsupported table constraint: {constraint:?}")
-            }
-            Self::UnsupportedCompoundIdentifier { length } => {
+            Error::PrimaryKeyWithExpression { expr } => {
                 write!(
                     f,
-                    "unsupported compound identifier with length {}",
-                    length
+                    "unsupported primary key with unsupported expression: {expr:?}"
                 )
-            },
-            Self::UnsupportedSelectionValue { value } => {
+            }
+            Error::ForeignKey { reason } => {
+                write!(f, "unsupported foreign key with {}", reason)
+            }
+            Error::TableConstraint { constraint } => {
+                write!(f, "unsupported table constraint: {constraint:?}")
+            }
+            Error::CompoundIdentifier { length } => {
+                write!(f, "unsupported compound identifier with length {}", length)
+            }
+            Error::SelectionValue { value } => {
                 write!(f, "unsupporetd selection value: {value:?} ")
             }
-            Self::UnsupportedSelection { selection, r#where } => {
-                match r#where {
-                    None =>  write!(f, "unsupporetd selection: {selection:?} "),
-                    Some(w) => write!(f, "unsupported selection in {w}: {selection:?}"),
-                }
+            Error::Selection { selection, r#where } => match r#where {
+                None => write!(f, "unsupporetd selection: {selection:?} "),
+                Some(w) => write!(f, "unsupported selection in {w}: {selection:?}"),
             },
-            Self::UnsupportedSelectionFromExpr { expr } => {
+            Error::SelectionFromExpr { expr } => {
                 write!(f, "unsupported selection expr: {expr:?}")
-            },
-            Self::UnsupportedInsertSourceExpression { expr } => {
+            }
+            Error::InsertSourceExpression { expr } => {
                 write!(f, "unsupported insert source expr: {expr:?}")
             }
-            Self::UnsupportedInsertSourceValue { value } => {
+            Error::InsertSourceValue { value } => {
                 write!(f, "unsupported insert source value: {value:?}")
-            },
-            Self::UnsupportedUpdateExpression { expr } => {
+            }
+            Error::UpdateExpression { expr } => {
                 write!(f, "unsupported update from expr: {expr:?}")
             }
-            Self::UnsupportedUpdateValue { value } => {
+            Error::UpdateValue { value } => {
                 write!(f, "unsupported update value: {value:?}")
-            },
-            Self::UnsupportedBinaryOperator { op } => {
+            }
+            Error::BinaryOperator { op } => {
                 write!(f, "unsupported binary operator: {op:?}")
+            }
+            Error::Keyword { keyword } => {
+                write!(f, "unsupported keyword: '{keyword}'")
+            }
+            Error::JoinConstraint { constraint } => {
+                write!(f, "unsupported join constraint: {constraint:?}")
+            }
+            Error::JoinOperator { op } => {
+                write!(f, "unsupported join operator: {op:?}")
+            }
+            Error::TableAlias => {
+                write!(f, "table aliasing is unsupported")
+            }
+            Error::TableValuedFunctions => {
+                write!(
+                    f,
+                    "arguments of a table-valued function are not supported in table factor"
+                )
+            }
+            Error::TableWithHints => {
+                write!(f, "with hints are not supported in table factor")
+            }
+            Error::TableVersioning => {
+                write!(f, "table versioning is not supported in table factor")
+            }
+            Error::TableWithOrdinality => {
+                write!(f, "table with ordinality is not supported in table factor")
+            }
+            Error::TableWithPartitions => {
+                write!(f, "partitions are not supported in table factor")
+            }
+            Error::TableWithJsonPath => {
+                write!(f, "json path is not supported in table factor")
+            }
+            Error::TableWithSampleModifier => {
+                write!(f, "sample is not supported in table factor")
+            }
+            Error::TableWithIndexHints => {
+                write!(f, "index hints are not supported in table factor")
+            }
+            Error::TableFactor { factor } => {
+                write!(f, "unsupported table factor: {factor:?}")
+            }
+            Error::TableJoins { table_joins } => {
+                write!(
+                    f,
+                    "select with multiple tables is not supported yet: {table_joins:?}"
+                )
             }
         }
     }

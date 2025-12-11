@@ -93,7 +93,7 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Custom(ObjectName(name_parts), _) => {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
-                    None => Err(Error::UnsupportedDataType {
+                    None => Err(Error::DataType {
                         data_type: value.clone(),
                     })?,
                 }
@@ -102,7 +102,7 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Time(_, _) => DataType::Time,
             sqlparser::ast::DataType::Timestamp(_, _) => DataType::Timestamp,
             sqlparser::ast::DataType::Datetime(_) => DataType::Timestamp,
-            _ => Err(Error::UnsupportedDataType {
+            _ => Err(Error::DataType {
                 data_type: value.clone(),
             })?,
         };
@@ -287,7 +287,7 @@ impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
                     sqlparser::ast::ColumnOption::NotNull => options.set_not_null(),
                     sqlparser::ast::ColumnOption::Null => options.set_nullable(),
                     option if is_auto_increment_option(option) => options.set_auto_increment(),
-                    option => Err(Error::UnsupportedColumnOption {
+                    option => Err(Error::ColumnOption {
                         option: option.clone(),
                     })?,
                 };
@@ -338,7 +338,7 @@ impl TryFrom<&ReferentialAction> for OnDeleteAction {
             ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
             ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
             ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
-            other => Err(Error::UnsupportedOnDeleteConstrait {
+            other => Err(Error::OnDeleteConstrait {
                 referential_action: other.clone(),
             })?,
         }
@@ -402,25 +402,25 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         characteristics,
                     } => {
                         if name.is_some() {
-                            Err(Error::UnsupportedPrimaryKey { reason: "name" })?
+                            Err(Error::PrimaryKey { reason: "name" })?
                         }
                         if index_name.is_some() {
-                            Err(Error::UnsupportedPrimaryKey {
+                            Err(Error::PrimaryKey {
                                 reason: "index name",
                             })?
                         }
                         if index_type.is_some() {
-                            Err(Error::UnsupportedPrimaryKey {
+                            Err(Error::PrimaryKey {
                                 reason: "index type",
                             })?
                         }
                         if !index_options.is_empty() {
-                            Err(Error::UnsupportedPrimaryKey {
+                            Err(Error::PrimaryKey {
                                 reason: "index options",
                             })?
                         }
                         if characteristics.is_some() {
-                            Err(Error::UnsupportedPrimaryKey {
+                            Err(Error::PrimaryKey {
                                 reason: "characteristics",
                             })?
                         }
@@ -432,7 +432,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                      operator_class,
                                  }| {
                                     if operator_class.is_some() {
-                                        Err(Error::UnsupportedPrimaryKey {
+                                        Err(Error::PrimaryKey {
                                             reason: "operator class",
                                         })?
                                     };
@@ -442,16 +442,16 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                         with_fill,
                                     } = column;
                                     if with_fill.is_some() {
-                                        Err(Error::UnsupportedPrimaryKey {
+                                        Err(Error::PrimaryKey {
                                             reason: "`WITH FILL`",
                                         })?
                                     }
                                     if options.nulls_first.is_some() || options.asc.is_some() {
-                                        Err(Error::UnsupportedPrimaryKey { reason: "options" })?
+                                        Err(Error::PrimaryKey { reason: "options" })?
                                     }
                                     match expr {
                                         Expr::Identifier(ident) => Ok(ident.value.clone()),
-                                        _ => Err(Error::UnsupportedPrimaryKeyWithExpression {
+                                        _ => Err(Error::PrimaryKeyWithExpression {
                                             expr: expr.clone(),
                                         })?,
                                     }
@@ -471,17 +471,17 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         index_name,
                     } => {
                         if name.is_some() {
-                            Err(Error::UnsupportedForeignKey {
+                            Err(Error::ForeignKey {
                                 reason: "constraint",
                             })?
                         }
                         if on_update.is_some() {
-                            Err(Error::UnsupportedForeignKey {
+                            Err(Error::ForeignKey {
                                 reason: "on update",
                             })?
                         }
                         if characteristics.is_some() {
-                            Err(Error::UnsupportedForeignKey {
+                            Err(Error::ForeignKey {
                                 reason: "charecteristics",
                             })?
                         }
@@ -505,7 +505,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                             on_delete,
                         }
                     }
-                    _ => Err(Error::UnsupportedTableConstraint {
+                    _ => Err(Error::TableConstraint {
                         constraint: constraint.clone(),
                     })?,
                 };
@@ -630,7 +630,7 @@ impl TryFrom<&Expr> for Selection {
             Expr::CompoundIdentifier(ids) => {
                 // SQLite only supports table.column, not schema.table.column or database.table.column
                 if ids.len() != 2 {
-                    Err(Error::UnsupportedCompoundIdentifier { length: ids.len() })?
+                    Err(Error::CompoundIdentifier { length: ids.len() })?
                 }
                 Selection::CompoundIdentifier(CompoundIdentifier {
                     table: ids[0].value.clone(),
@@ -641,7 +641,9 @@ impl TryFrom<&Expr> for Selection {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
                 Value::Placeholder(_) => Selection::Placeholder,
-                _ => Err(Error::UnsupportedSelectionValue { value: value.value.clone() })?
+                _ => Err(Error::SelectionValue {
+                    value: value.value.clone(),
+                })?,
             },
             Expr::InList {
                 expr,
@@ -650,16 +652,22 @@ impl TryFrom<&Expr> for Selection {
             } => {
                 let ident = match expr.as_ref().try_into()? {
                     Selection::Ident(ident) => ident,
-                    selection => Err(Error::UnsupportedSelection { selection: selection.clone(), r#where: None } )?,
+                    selection => Err(Error::Selection {
+                        selection: selection.clone(),
+                        r#where: None,
+                    })?,
                 };
                 let list = list
                     .iter()
                     .map(|expr| {
                         let ok = match expr.try_into()? {
-                            ok@Selection::String(_) => ok,
-                            ok@Selection::Number(_) => ok,
-                            ok@Selection::Placeholder => ok,
-                            selection => Err(Error::UnsupportedSelection { selection: selection.clone(), r#where: Some("InList")} )?,
+                            ok @ Selection::String(_) => ok,
+                            ok @ Selection::Number(_) => ok,
+                            ok @ Selection::Placeholder => ok,
+                            selection => Err(Error::Selection {
+                                selection: selection.clone(),
+                                r#where: Some("InList"),
+                            })?,
                         };
                         Ok(ok)
                     })
@@ -670,7 +678,7 @@ impl TryFrom<&Expr> for Selection {
                     list,
                 }
             }
-            expr => Err(Error::UnsupportedSelectionFromExpr{ expr: expr.clone() })?
+            expr => Err(Error::SelectionFromExpr { expr: expr.clone() })?,
         };
         Ok(selection)
     }
@@ -724,16 +732,22 @@ impl TryFrom<&Expr> for InsertSource {
                         source: Box::new(expr.as_ref().try_into()?),
                     });
                 }
-                _ => Err(Error::UnsupportedInsertSourceExpression { expr: *(expr.clone()) })?,
+                _ => Err(Error::InsertSourceExpression {
+                    expr: *(expr.clone()),
+                })?,
             },
-            value =>  Err(Error::UnsupportedInsertSourceExpression { expr: value.clone() })?,
+            value => Err(Error::InsertSourceExpression {
+                expr: value.clone(),
+            })?,
         };
         let insert_source = match value {
             Value::Null => InsertSource::Null,
             Value::Number(number, _) => InsertSource::Number(number.clone()),
             Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
             Value::Placeholder(_) => InsertSource::Placeholder,
-            value => Err(Error::UnsupportedInsertSourceValue { value: value.clone() })?,
+            value => Err(Error::InsertSourceValue {
+                value: value.clone(),
+            })?,
         };
         Ok(insert_source)
     }
@@ -759,14 +773,16 @@ impl TryFrom<&Expr> for UpdateValue {
     fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
         let value = match expr {
             Expr::Value(value) => &value.value,
-            expr => Err(Error::UnsupportedUpdateExpression { expr: expr.clone() })?,
+            expr => Err(Error::UpdateExpression { expr: expr.clone() })?,
         };
         let update_value = match value {
             Value::Null => UpdateValue::Null,
             Value::Number(number, _) => UpdateValue::Number(number.clone()),
             Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
             Value::Placeholder(_) => UpdateValue::Placeholder,
-            value =>  Err(Error::UnsupportedUpdateValue { value: value.clone() })?,
+            value => Err(Error::UpdateValue {
+                value: value.clone(),
+            })?,
         };
         Ok(update_value)
     }
@@ -793,7 +809,7 @@ impl TryFrom<&BinaryOperator> for Op {
             BinaryOperator::And => Op::And,
             BinaryOperator::Eq => Op::Eq,
             BinaryOperator::Or => Op::Or,
-            op => Err(Error::UnsupportedBinaryOperator { op: op.clone() })?
+            _ => Err(Error::BinaryOperator { op: op.clone() })?,
         };
         Ok(op)
     }
@@ -831,20 +847,24 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
         /// ClickHouse supports the optional `GLOBAL` keyword before the join operator.
         /// See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
         if table.global {
-            Err("global keyword before the join operator isn't supported")?
+            Err(Error::Keyword { keyword: "GLOBAL" })?
         };
 
         let name = table_relation_to_object_name(&table.relation)?;
         let operator = match &table.join_operator {
             sqlparser::ast::JoinOperator::Join(constraint) => match constraint {
                 JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
-                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+                other => Err(Error::JoinConstraint {
+                    constraint: other.clone(),
+                })?,
             },
             sqlparser::ast::JoinOperator::Inner(constraint) => match constraint {
                 JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
-                other => Err(format!("join constraint '{other:?}' is not supported"))?,
+                other => Err(Error::JoinConstraint {
+                    constraint: other.clone(),
+                })?,
             },
-            other => Err(format!("join operator '{other:?}' is not supported"))?,
+            other => Err(Error::JoinOperator { op: other.clone() })?,
         };
 
         Ok(Self { name, operator })
@@ -866,45 +886,37 @@ fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
             index_hints,
         } => {
             if alias.is_some() {
-                Err("alias is not supported in table factor 'table'")?
+                Err(Error::TableAlias)?
             }
-            // Postgre + MSSQL
             if args.is_some() {
-                Err(
-                    "arguments of a table-valued function are not supported in table factor 'table'",
-                )?
+                Err(Error::TableValuedFunctions)?
             }
-            //  MSSQL-specific `WITH (...)` hints such as NOLOCK.
             if !with_hints.is_empty() {
-                Err("with hints are not supported in table factor 'table'")?
+                Err(Error::TableWithHints)?
             }
-            // Table time-travel, as supported by BigQuery and MSSQL.
             if version.is_some() {
-                Err("version is not supported in table factor 'table'")?
+                Err(Error::TableVersioning)?
             }
-            // Postgres.
             if *with_ordinality {
-                Err("with ordinality is not supported in table factor 'table'")?
+                Err(Error::TableWithOrdinality)?
             }
-            // Mysql
             if !partitions.is_empty() {
-                Err("partitions are not supported in table factor 'table'")?
+                Err(Error::TableWithPartitions)?
             }
-            // Optional PartiQL JsonPath
             if json_path.is_some() {
-                Err("json path is not supported in table factor 'table'")?
+                Err(Error::TableWithJsonPath)?
             }
-            // Optional table sample modifier
             if sample.is_some() {
-                Err("sample is not supported in table factor 'table'")?
+                Err(Error::TableWithSampleModifier)?
             }
-            // Optional index hints (mysql)
             if !index_hints.is_empty() {
-                Err("index hints are not supported in table factor 'table'")?
+                Err(Error::TableWithIndexHints)?
             }
             Ok(Ast::parse_object_name(name)?)
         }
-        other => Err(format!("unsupported table factor: {other:?}"))?,
+        other => Err(Error::TableFactor {
+            factor: other.clone(),
+        })?,
     }
 }
 
@@ -930,9 +942,9 @@ impl TryFrom<&[TableWithJoins]> for FromClause {
                 }
             }
             &[] => Self::None,
-            other => Err(format!(
-                "select with multiple tables is not supported yet: {other:?}"
-            ))?,
+            other => Err(Error::TableJoins {
+                table_joins: other.iter().map(Clone::clone).collect(),
+            })?,
         };
         Ok(from)
     }
