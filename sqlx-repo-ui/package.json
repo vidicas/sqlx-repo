@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
+    "daisyui": "^5.5.8",
+    "tailwindcss-bg-patterns": "^0.3.0"
+  }
+}
