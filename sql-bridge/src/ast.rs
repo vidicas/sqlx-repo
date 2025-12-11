@@ -1425,14 +1425,14 @@ impl Ast {
     }
 
     fn parse_query(query: &Query) -> Result<Ast> {
-        // FIXME:
+        // FIXME: support CTEs
         if query.with.is_some() {
             Err("CTE is not yet supported")?
         }
         if query.fetch.is_some() {
             Err("FETCH is not supported")?;
         }
-        // FIXME:
+        // FIXME: support limits
         if query.limit_clause.is_some() {
             Err("LIMIT is not yet supported")?
         }
@@ -1448,6 +1448,9 @@ impl Ast {
         };
         if select.top.is_some() || select.top_before_distinct {
             return Err("TOP statement is not supported")?;
+        }
+        if select.projection.is_empty() {
+            return Err("empty projections are not supported")?;
         }
         let projections = select
             .projection

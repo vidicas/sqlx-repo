@@ -307,7 +307,7 @@ fn select_not_in() {
 #[test]
 fn select_with_join() {
     let input = "
-        select * from foo 
+        select * from foo
         join bar on foo.id = bar.id
         join baz on foo.id = baz.id
     ";
@@ -372,4 +372,11 @@ fn select_with_join_too_many_indent_compounds() {
 
     let err = res.unwrap_err().to_string();
     assert!(err.contains("only two-parts compound identifiers are supported"));
+}
+
+#[test]
+fn select_empty_projection() {
+    let input = "select from foo";
+    let res = parse(input);
+    assert!(res.is_err());
 }
