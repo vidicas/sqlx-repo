@@ -425,10 +425,10 @@ macro_rules! migrator {
 
 pub mod prelude {
     pub use super::{
+        DatabaseRepository, SqlxDBNum,
         ext::AcquireExt,
         migration, migrator,
-        migrator::{init_migrator, Migration},
-        DatabaseRepository, SqlxDBNum,
+        migrator::{Migration, init_migrator},
     };
     pub use chrono;
     pub use futures;
