@@ -93,14 +93,18 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Custom(ObjectName(name_parts), _) => {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
-                    None => Err(format!("unsupported data type: {value:?}"))?,
+                    None => Err(Error::UnsupportedDataType {
+                        data_type: value.clone(),
+                    })?,
                 }
             }
             sqlparser::ast::DataType::Date => DataType::Date,
             sqlparser::ast::DataType::Time(_, _) => DataType::Time,
             sqlparser::ast::DataType::Timestamp(_, _) => DataType::Timestamp,
             sqlparser::ast::DataType::Datetime(_) => DataType::Timestamp,
-            _ => Err(format!("unsupported data type: {value:?}"))?,
+            _ => Err(Error::UnsupportedDataType {
+                data_type: value.clone(),
+            })?,
         };
         Ok(dt)
     }
@@ -283,7 +287,9 @@ impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
                     sqlparser::ast::ColumnOption::NotNull => options.set_not_null(),
                     sqlparser::ast::ColumnOption::Null => options.set_nullable(),
                     option if is_auto_increment_option(option) => options.set_auto_increment(),
-                    option => Err(format!("unsupported column option: {option:?}"))?,
+                    option => Err(Error::UnsupportedColumnOption {
+                        option: option.clone(),
+                    })?,
                 };
                 Ok(options)
             },
@@ -332,9 +338,9 @@ impl TryFrom<&ReferentialAction> for OnDeleteAction {
             ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
             ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
             ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
-            other => Err(format!(
-                "on delete {other} in foreign key constraint is not supported"
-            ))?,
+            other => Err(Error::UnsupportedOnDeleteConstrait {
+                referential_action: other.clone(),
+            })?,
         }
     }
 }
@@ -396,19 +402,27 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         characteristics,
                     } => {
                         if name.is_some() {
-                            Err("PRIMARY KEY with name is not supported")?
+                            Err(Error::UnsupportedPrimaryKey { reason: "name" })?
                         }
                         if index_name.is_some() {
-                            Err("PRIMARY KEY with index name is not supported")?
+                            Err(Error::UnsupportedPrimaryKey {
+                                reason: "index name",
+                            })?
                         }
                         if index_type.is_some() {
-                            Err("PRIMARY KEY with index type is not supported")?
+                            Err(Error::UnsupportedPrimaryKey {
+                                reason: "index type",
+                            })?
                         }
                         if !index_options.is_empty() {
-                            Err("PRIMARY KEY with index options is not supported")?
+                            Err(Error::UnsupportedPrimaryKey {
+                                reason: "index options",
+                            })?
                         }
                         if characteristics.is_some() {
-                            Err("PRIMARY KEY with characteristics is not supported")?
+                            Err(Error::UnsupportedPrimaryKey {
+                                reason: "characteristics",
+                            })?
                         }
                         let columns = columns
                             .iter()
@@ -418,7 +432,9 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                      operator_class,
                                  }| {
                                     if operator_class.is_some() {
-                                        Err("PRIMARY KEY with operator class is not supported")?;
+                                        Err(Error::UnsupportedPrimaryKey {
+                                            reason: "operator class",
+                                        })?
                                     };
                                     let OrderByExpr {
                                         expr,
@@ -426,16 +442,18 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                         with_fill,
                                     } = column;
                                     if with_fill.is_some() {
-                                        Err("PRIMARY KEY with `WITH FILL` is not supported")?;
+                                        Err(Error::UnsupportedPrimaryKey {
+                                            reason: "`WITH FILL`",
+                                        })?
                                     }
                                     if options.nulls_first.is_some() || options.asc.is_some() {
-                                        Err("PRIMARY KEY with options is not supported")?;
+                                        Err(Error::UnsupportedPrimaryKey { reason: "options" })?
                                     }
                                     match expr {
                                         Expr::Identifier(ident) => Ok(ident.value.clone()),
-                                        _ => Err(format!(
-                                            "Unsupported expression {expr:?} in PRIMARY KEY"
-                                        ))?,
+                                        _ => Err(Error::UnsupportedPrimaryKeyWithExpression {
+                                            expr: expr.clone(),
+                                        })?,
                                     }
                                 },
                             )
@@ -453,13 +471,19 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         index_name,
                     } => {
                         if name.is_some() {
-                            Err("named foreign key constraint is not supported")?
+                            Err(Error::UnsupportedForeignKey {
+                                reason: "constraint",
+                            })?
                         }
                         if on_update.is_some() {
-                            Err("on update in foreign key constraint is not supported")?
+                            Err(Error::UnsupportedForeignKey {
+                                reason: "on update",
+                            })?
                         }
                         if characteristics.is_some() {
-                            Err("characteristics in foreign key constraint is not supported")?
+                            Err(Error::UnsupportedForeignKey {
+                                reason: "charecteristics",
+                            })?
                         }
                         let on_delete = match on_delete {
                             None => None,
@@ -481,7 +505,9 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                             on_delete,
                         }
                     }
-                    _ => Err(format!("unsupported constraint: {constraint:?}"))?,
+                    _ => Err(Error::UnsupportedTableConstraint {
+                        constraint: constraint.clone(),
+                    })?,
                 };
                 Ok(res)
             })
@@ -604,10 +630,7 @@ impl TryFrom<&Expr> for Selection {
             Expr::CompoundIdentifier(ids) => {
                 // SQLite only supports table.column, not schema.table.column or database.table.column
                 if ids.len() != 2 {
-                    Err(format!(
-                        "only two-parts compound identifiers are supported, not {}",
-                        ids.len()
-                    ))?
+                    Err(Error::UnsupportedCompoundIdentifier { length: ids.len() })?
                 }
                 Selection::CompoundIdentifier(CompoundIdentifier {
                     table: ids[0].value.clone(),
@@ -618,10 +641,7 @@ impl TryFrom<&Expr> for Selection {
                 Value::Number(number, _) => Selection::Number(number.clone()),
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
                 Value::Placeholder(_) => Selection::Placeholder,
-                _ => Err(format!(
-                    "unsupported conversion to Selection from value: {:#?}",
-                    value.value
-                ))?,
+                _ => Err(Error::UnsupportedSelectionValue { value: value.value.clone() })?
             },
             Expr::InList {
                 expr,
@@ -630,7 +650,7 @@ impl TryFrom<&Expr> for Selection {
             } => {
                 let ident = match expr.as_ref().try_into()? {
                     Selection::Ident(ident) => ident,
-                    _ => Err("unsupported conversion to Selection, InList currently supports only Identifiers".to_string())?,
+                    selection => Err(Error::UnsupportedSelection { selection: selection.clone(), r#where: None } )?,
                 };
                 let list = list
                     .iter()
@@ -639,9 +659,7 @@ impl TryFrom<&Expr> for Selection {
                             ok@Selection::String(_) => ok,
                             ok@Selection::Number(_) => ok,
                             ok@Selection::Placeholder => ok,
-                            _ => Err(format!(
-                                "unsupported conversion in Selection, unsupported expression in list of InList: {expr:?}"
-                            ))?
+                            selection => Err(Error::UnsupportedSelection { selection: selection.clone(), r#where: Some("InList")} )?,
                         };
                         Ok(ok)
                     })
@@ -652,9 +670,7 @@ impl TryFrom<&Expr> for Selection {
                     list,
                 }
             }
-            expr => Err(format!(
-                "unsupported conversion to Selection from expr: {expr:?}"
-            ))?,
+            expr => Err(Error::UnsupportedSelectionFromExpr{ expr: expr.clone() })?
         };
         Ok(selection)
     }
@@ -708,22 +724,16 @@ impl TryFrom<&Expr> for InsertSource {
                         source: Box::new(expr.as_ref().try_into()?),
                     });
                 }
-                _ => Err(format!(
-                    "unsupported conversion to insert source cast from expr: {expr:#?}"
-                ))?,
+                _ => Err(Error::UnsupportedInsertSourceExpression { expr: *(expr.clone()) })?,
             },
-            value => Err(format!(
-                "unsupported conversion to insert source from value: {value:#?}"
-            ))?,
+            value =>  Err(Error::UnsupportedInsertSourceExpression { expr: value.clone() })?,
         };
         let insert_source = match value {
             Value::Null => InsertSource::Null,
             Value::Number(number, _) => InsertSource::Number(number.clone()),
             Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
             Value::Placeholder(_) => InsertSource::Placeholder,
-            value => Err(format!(
-                "unsupported conversion to insert source from value: {value:#?}"
-            ))?,
+            value => Err(Error::UnsupportedInsertSourceValue { value: value.clone() })?,
         };
         Ok(insert_source)
     }
@@ -749,18 +759,14 @@ impl TryFrom<&Expr> for UpdateValue {
     fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
         let value = match expr {
             Expr::Value(value) => &value.value,
-            expr => Err(format!(
-                "unsupported conversion to UpdateValue from expr: {expr:?}"
-            ))?,
+            expr => Err(Error::UnsupportedUpdateExpression { expr: expr.clone() })?,
         };
         let update_value = match value {
             Value::Null => UpdateValue::Null,
             Value::Number(number, _) => UpdateValue::Number(number.clone()),
             Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
             Value::Placeholder(_) => UpdateValue::Placeholder,
-            value => Err(format!(
-                "unsupported conversion into UpdateValue from value: {value:#?}"
-            ))?,
+            value =>  Err(Error::UnsupportedUpdateValue { value: value.clone() })?,
         };
         Ok(update_value)
     }
@@ -781,12 +787,13 @@ pub enum DropObjectType {
 
 impl TryFrom<&BinaryOperator> for Op {
     type Error = Error;
+
     fn try_from(op: &BinaryOperator) -> std::result::Result<Self, Self::Error> {
         let op = match op {
             BinaryOperator::And => Op::And,
             BinaryOperator::Eq => Op::Eq,
             BinaryOperator::Or => Op::Or,
-            _ => Err(format!("binary operator not supported {op:?}"))?,
+            op => Err(Error::UnsupportedBinaryOperator { op: op.clone() })?
         };
         Ok(op)
     }
