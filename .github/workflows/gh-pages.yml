@@ -1,0 +1,52 @@
+name: on-github-pages
+
+on:
+  push:
+    branches: ["master"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: write 
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: wasm32-unknown-unknown
+          override: true
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Dioxus-CLI
+        shell: bash
+        run: cargo install dioxus-cli
+
+      - name: Build Project
+        shell: bash
+        run: |
+          cd sqlx-repo-ui/
+          ASSET_PREFIX="sqlx-repo" dx build --release
+          cd ../target/dx/sqlx-repo-ui/release/web/public
+          sed -i 's#/assets/#/sqlx-repo/assets/#g' index.html
+          sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/ui-*.js
+          cp ./index.html ./404.html
+
+      - name: Deploy Project
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: target/dx/sqlx-repo-ui/release/web/public
