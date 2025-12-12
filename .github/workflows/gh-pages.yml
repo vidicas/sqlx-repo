@@ -42,7 +42,7 @@ jobs:
           ASSET_PREFIX="sqlx-repo" dx build --release
           cd ../target/dx/sqlx-repo-ui/release/web/public
           sed -i 's#/assets/#/sqlx-repo/assets/#g' index.html
-          sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/ui-*.js
+          sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/sqlx-repo-ui-*.js
           cp ./index.html ./404.html
 
       - name: Deploy Project
