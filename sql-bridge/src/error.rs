@@ -1,17 +1,31 @@
 use sqlparser::ast::{
-    BinaryOperator, ColumnOption, DataType, Expr, JoinConstraint, JoinOperator, ReferentialAction,
-    TableConstraint, TableFactor, TableWithJoins, Value,
+    AlterTableOperation, BinaryOperator, ColumnOption, DataType, Expr, FunctionArg,
+    FunctionArguments, IndexColumn, JoinConstraint, JoinOperator, ObjectType, ReferentialAction,
+    SelectItem, SetExpr, TableConstraint, TableFactor, TableWithJoins, Value,
 };
 
 use crate::ast::Selection;
 
+use sqlparser::parser::ParserError;
+use std::io;
+use std::string::FromUtf8Error;
+
 #[derive(Debug)]
+pub struct IoErrorWrap(io::Error);
+
+impl PartialEq for IoErrorWrap {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.kind() == other.0.kind()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Error {
     DataType {
-        data_type: DataType,
+        data_type: Box<DataType>,
     },
     ColumnOption {
-        option: ColumnOption,
+        option: Box<ColumnOption>,
     },
     OnDeleteConstrait {
         referential_action: ReferentialAction,
@@ -20,38 +34,38 @@ pub enum Error {
         reason: &'static str,
     },
     PrimaryKeyWithExpression {
-        expr: Expr,
+        expr: Box<Expr>,
     },
     ForeignKey {
         reason: &'static str,
     },
     TableConstraint {
-        constraint: TableConstraint,
+        constraint: Box<TableConstraint>,
     },
     CompoundIdentifier {
         length: usize,
     },
     SelectionValue {
-        value: Value,
+        value: Box<Value>,
     },
     Selection {
-        selection: Selection,
+        selection: Box<Selection>,
         r#where: Option<&'static str>,
     },
     SelectionFromExpr {
-        expr: Expr,
+        expr: Box<Expr>,
     },
     InsertSourceExpression {
-        expr: Expr,
+        expr: Box<Expr>,
     },
     InsertSourceValue {
-        value: Value,
+        value: Box<Value>,
     },
     UpdateExpression {
-        expr: Expr,
+        expr: Box<Expr>,
     },
     UpdateValue {
-        value: Value,
+        value: Box<Value>,
     },
     BinaryOperator {
         op: BinaryOperator,
@@ -60,10 +74,10 @@ pub enum Error {
         keyword: &'static str,
     },
     JoinConstraint {
-        constraint: JoinConstraint,
+        constraint: Box<JoinConstraint>,
     },
     JoinOperator {
-        op: JoinOperator,
+        op: Box<JoinOperator>,
     },
     TableAlias,
     /// Postgre + MSSQL
@@ -85,11 +99,90 @@ pub enum Error {
     /// See: <https://dev.mysql.com/doc/refman/8.4/en/index-hints.html>
     TableWithIndexHints,
     TableFactor {
-        factor: TableFactor,
+        factor: Box<TableFactor>,
     },
     TableJoins {
         table_joins: Vec<TableWithJoins>,
     },
+    DropObjectType {
+        object_type: ObjectType,
+    },
+    Drop {
+        reason: &'static str,
+    },
+    AlterTable {
+        reason: &'static str,
+    },
+    AlterTableOp {
+        op: Box<AlterTableOperation>,
+    },
+    ObjectName {
+        reason: &'static str,
+    },
+    CreateTable {
+        reason: &'static str,
+    },
+    FunctionArguments {
+        reason: &'static str,
+        arguments: Box<FunctionArguments>,
+    },
+    FunctionArgument {
+        reason: &'static str,
+        argument: Box<FunctionArg>,
+    },
+    CreateIndex {
+        reason: &'static str,
+    },
+    CreateIndexColumn {
+        column: Box<IndexColumn>,
+    },
+    CTE,
+    Fetch,
+    Limit,
+    Locks,
+    For,
+    Select {
+        set_expr: Box<SetExpr>,
+    },
+    Top,
+    Count {
+        reason: &'static str,
+        args: Vec<crate::ast::FunctionArg>,
+    },
+    Function {
+        name: String,
+    },
+    Projection {
+        select_item: Box<SelectItem>,
+    },
+    OrderBy {
+        reason: &'static str,
+    },
+    GroupBy {
+        reason: &'static str,
+    },
+    Insert {
+        reason: &'static str,
+    },
+    InsertTableObject,
+    InsertSourceEmpty,
+    Update {
+        reason: &'static str,
+    },
+    UpdateTableType,
+    UpdateAssignmentTarget,
+    Delete {
+        reason: &'static str,
+    },
+    DeleteToSql {
+        reason: &'static str,
+    },
+    DropIndex,
+    Statement,
+    Serial,
+    Io(IoErrorWrap),
+    Parser(ParserError),
+    Utf8(FromUtf8Error),
 }
 
 impl std::fmt::Display for Error {
@@ -199,6 +292,143 @@ impl std::fmt::Display for Error {
                     "select with multiple tables is not supported yet: {table_joins:?}"
                 )
             }
+            Error::DropObjectType { object_type } => {
+                write!(f, "unsupported drop of object type: {object_type:?}")
+            }
+            Error::Drop { reason } => {
+                write!(f, "unsupported drop: {reason}")
+            }
+            Error::AlterTable { reason } => {
+                write!(f, "unsupported alter table: {reason}")
+            }
+            Error::AlterTableOp { op } => {
+                write!(f, "unsupported operation: {op:?}")
+            }
+            Error::ObjectName { reason } => {
+                write!(f, "failed to parse object name: {reason}")
+            }
+            Error::CreateTable { reason } => {
+                write!(f, "unsupported create table: {reason}")
+            }
+            Error::FunctionArguments { reason, arguments } => {
+                write!(
+                    f,
+                    "unsupported function arguments: {reason}, function arguments: {arguments:?}"
+                )
+            }
+            Error::FunctionArgument { reason, argument } => {
+                write!(
+                    f,
+                    "unsupported function argument: {reason}, function argument: {argument:?}"
+                )
+            }
+            Error::CreateIndex { reason } => {
+                write!(f, "unsupported create index: {reason}")
+            }
+            Error::CreateIndexColumn { column } => {
+                write!(f, "unsupported create index column: {column:?}")
+            }
+            Error::CTE => {
+                write!(f, "CTE are not supported")
+            }
+            Error::Fetch => {
+                write!(f, "Fetch is not supported")
+            }
+            Error::Limit => {
+                write!(f, "limit is not supported")
+            }
+            Error::Locks => {
+                write!(f, "locks are not supported")
+            }
+            Error::For => {
+                write!(f, "for clause is not supported")
+            }
+            Error::Select { set_expr } => {
+                write!(f, "unsupported select set expr: {set_expr:?}")
+            }
+            Error::Top => {
+                write!(f, "top is not supported")
+            }
+            Error::Count { reason, args } => {
+                write!(f, "unsupported count: {reason}, args: {args:?}")
+            }
+            Error::Function { name } => {
+                write!(f, "unsupported function '{name}'")
+            }
+            Error::Projection { select_item } => {
+                write!(f, "unsupported projection select item: {select_item:?}")
+            }
+            Error::OrderBy { reason } => {
+                write!(f, "{reason}")
+            }
+            Error::GroupBy { reason } => {
+                write!(f, "{reason}")
+            }
+            Error::Insert { reason } => {
+                write!(f, "{reason}")
+            }
+            Error::InsertTableObject => {
+                write!(f, "unsupported table name type")
+            }
+            Error::InsertSourceEmpty => {
+                write!(f, "insert source is empty")
+            }
+            Error::Update { reason } => {
+                write!(f, "{reason}")
+            }
+            Error::UpdateTableType => {
+                write!(f, "unsupported table type")
+            }
+            Error::UpdateAssignmentTarget => {
+                write!(f, "unsupported assignment target")
+            }
+            Error::Delete { reason } => {
+                write!(f, "unsupported delete: {reason}")
+            }
+            Error::DeleteToSql { reason } => {
+                write!(f, "unsupported delete: {reason}")
+            }
+            Error::DropIndex => {
+                write!(f, "`DROP INDEX` requires table name")
+            }
+            Error::Statement => {
+                write!(f, "unsupported statement")
+            }
+            Error::Serial => {
+                write!(
+                    f,
+                    "expected smallserial/serial/bigserial with `PRIMARY KEY` constraint"
+                )
+            }
+            Error::Io(err) => {
+                write!(f, "IO error: {}", err.0)
+            }
+            Error::Parser(err) => {
+                write!(f, "Parser error: {err}")
+            }
+            Error::Utf8(err) => {
+                write!(f, "UTF-8 error: {err}")
+            }
         }
     }
 }
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Self {
+        Error::Io(IoErrorWrap(err))
+    }
+}
+
+impl From<ParserError> for Error {
+    fn from(err: ParserError) -> Self {
+        Error::Parser(err)
+    }
+}
+
+impl From<FromUtf8Error> for Error {
+    fn from(err: FromUtf8Error) -> Self {
+        Error::Utf8(err)
+    }
+}
+
+impl std::error::Error for Error {}

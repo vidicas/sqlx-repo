@@ -94,7 +94,7 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
                     None => Err(Error::DataType {
-                        data_type: value.clone(),
+                        data_type: Box::new(value.clone()),
                     })?,
                 }
             }
@@ -103,7 +103,7 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Timestamp(_, _) => DataType::Timestamp,
             sqlparser::ast::DataType::Datetime(_) => DataType::Timestamp,
             _ => Err(Error::DataType {
-                data_type: value.clone(),
+                data_type: Box::new(value.clone()),
             })?,
         };
         Ok(dt)
@@ -288,7 +288,7 @@ impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
                     sqlparser::ast::ColumnOption::Null => options.set_nullable(),
                     option if is_auto_increment_option(option) => options.set_auto_increment(),
                     option => Err(Error::ColumnOption {
-                        option: option.clone(),
+                        option: Box::new(option.clone()),
                     })?,
                 };
                 Ok(options)
@@ -339,7 +339,7 @@ impl TryFrom<&ReferentialAction> for OnDeleteAction {
             ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
             ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
             other => Err(Error::OnDeleteConstrait {
-                referential_action: other.clone(),
+                referential_action: *other,
             })?,
         }
     }
@@ -452,7 +452,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                     match expr {
                                         Expr::Identifier(ident) => Ok(ident.value.clone()),
                                         _ => Err(Error::PrimaryKeyWithExpression {
-                                            expr: expr.clone(),
+                                            expr: Box::new(expr.clone()),
                                         })?,
                                     }
                                 },
@@ -506,7 +506,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         }
                     }
                     _ => Err(Error::TableConstraint {
-                        constraint: constraint.clone(),
+                        constraint: Box::new(constraint.clone()),
                     })?,
                 };
                 Ok(res)
@@ -642,7 +642,7 @@ impl TryFrom<&Expr> for Selection {
                 Value::SingleQuotedString(string) => Selection::String(string.clone()),
                 Value::Placeholder(_) => Selection::Placeholder,
                 _ => Err(Error::SelectionValue {
-                    value: value.value.clone(),
+                    value: Box::new(value.value.clone()),
                 })?,
             },
             Expr::InList {
@@ -653,7 +653,7 @@ impl TryFrom<&Expr> for Selection {
                 let ident = match expr.as_ref().try_into()? {
                     Selection::Ident(ident) => ident,
                     selection => Err(Error::Selection {
-                        selection: selection.clone(),
+                        selection: Box::new(selection.clone()),
                         r#where: None,
                     })?,
                 };
@@ -665,7 +665,7 @@ impl TryFrom<&Expr> for Selection {
                             ok @ Selection::Number(_) => ok,
                             ok @ Selection::Placeholder => ok,
                             selection => Err(Error::Selection {
-                                selection: selection.clone(),
+                                selection: Box::new(selection.clone()),
                                 r#where: Some("InList"),
                             })?,
                         };
@@ -678,7 +678,7 @@ impl TryFrom<&Expr> for Selection {
                     list,
                 }
             }
-            expr => Err(Error::SelectionFromExpr { expr: expr.clone() })?,
+            expr => Err(Error::SelectionFromExpr { expr: Box::new(expr.clone()) })?,
         };
         Ok(selection)
     }
@@ -733,11 +733,11 @@ impl TryFrom<&Expr> for InsertSource {
                     });
                 }
                 _ => Err(Error::InsertSourceExpression {
-                    expr: *(expr.clone()),
+                    expr: expr.clone(),
                 })?,
             },
             value => Err(Error::InsertSourceExpression {
-                expr: value.clone(),
+                expr: Box::new(value.clone()),
             })?,
         };
         let insert_source = match value {
@@ -746,7 +746,7 @@ impl TryFrom<&Expr> for InsertSource {
             Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
             Value::Placeholder(_) => InsertSource::Placeholder,
             value => Err(Error::InsertSourceValue {
-                value: value.clone(),
+                value: Box::new(value.clone()),
             })?,
         };
         Ok(insert_source)
@@ -773,7 +773,7 @@ impl TryFrom<&Expr> for UpdateValue {
     fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
         let value = match expr {
             Expr::Value(value) => &value.value,
-            expr => Err(Error::UpdateExpression { expr: expr.clone() })?,
+            expr => Err(Error::UpdateExpression { expr: Box::new(expr.clone()) })?,
         };
         let update_value = match value {
             Value::Null => UpdateValue::Null,
@@ -781,7 +781,7 @@ impl TryFrom<&Expr> for UpdateValue {
             Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
             Value::Placeholder(_) => UpdateValue::Placeholder,
             value => Err(Error::UpdateValue {
-                value: value.clone(),
+                value: Box::new(value.clone()),
             })?,
         };
         Ok(update_value)
@@ -855,16 +855,16 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
             sqlparser::ast::JoinOperator::Join(constraint) => match constraint {
                 JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
                 other => Err(Error::JoinConstraint {
-                    constraint: other.clone(),
+                    constraint: Box::new(other.clone()),
                 })?,
             },
             sqlparser::ast::JoinOperator::Inner(constraint) => match constraint {
                 JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
                 other => Err(Error::JoinConstraint {
-                    constraint: other.clone(),
+                    constraint: Box::new(other.clone()),
                 })?,
             },
-            other => Err(Error::JoinOperator { op: other.clone() })?,
+            other => Err(Error::JoinOperator { op: Box::new(other.clone()) })?,
         };
 
         Ok(Self { name, operator })
@@ -915,7 +915,7 @@ fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
             Ok(Ast::parse_object_name(name)?)
         }
         other => Err(Error::TableFactor {
-            factor: other.clone(),
+            factor: Box::new(other.clone()),
         })?,
     }
 }
@@ -973,10 +973,14 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
             } => {
                 let _ = column_keyword;
                 if *if_not_exists {
-                    Err("`IF NOT EXISTS` is not supported in `ALTER TABLE ADD COLUMN`")?
+                    Err(Error::AlterTable {
+                        reason: "if not exists",
+                    })?
                 }
                 if column_position.is_some() {
-                    Err("column position is not supported in `ALTER TABLE ADD COLUMN")?
+                    Err(Error::AlterTable {
+                        reason: "column position",
+                    })?
                 }
                 let column = column_def.try_into()?;
                 AlterTableOperation::AddColumn { column }
@@ -984,9 +988,9 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
             sqlparser::ast::AlterTableOperation::RenameTable { table_name } => {
                 let table_name = match table_name {
                     // only mysql
-                    sqlparser::ast::RenameTableNameKind::As(_) => {
-                        Err("ALTER TABLE with AS keyword is not supported")?
-                    }
+                    sqlparser::ast::RenameTableNameKind::As(_) => Err(Error::AlterTable {
+                        reason: "as keyword",
+                    })?,
                     sqlparser::ast::RenameTableNameKind::To(table_name) => table_name,
                 };
                 AlterTableOperation::RenameTable {
@@ -1007,19 +1011,25 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 column_names,
             } => {
                 if *if_exists {
-                    Err("`IF EXISTS` is not supported in `ALTER TABLE DROP COLUMN`")?
+                    Err(Error::AlterTable {
+                        reason: "if exists",
+                    })?
                 }
                 if drop_behavior.is_some() {
-                    Err("drop behaviour is not supported in `ALTER TABLE DROP COLUMN`")?;
+                    Err(Error::AlterTable {
+                        reason: "drop behaviour",
+                    })?;
                 }
                 if column_names.len() > 1 {
-                    Err("multiple columns names is not supported in `ALTER TABLE DROP COLUMN`")?
+                    Err(Error::AlterTable {
+                        reason: "multiple columns names",
+                    })?
                 }
                 AlterTableOperation::DropColumn {
                     name: column_names.first().unwrap().value.clone(),
                 }
             }
-            _ => Err(format!("unsupported operation: {op:?}"))?,
+            op => Err(Error::AlterTableOp { op: Box::new(op.clone()) })?,
         };
         Ok(op)
     }
@@ -1029,14 +1039,18 @@ impl Ast {
     fn parse_object_name(name: &ObjectName) -> Result<String> {
         let name_parts = &name.0;
         if name_parts.len() > 1 {
-            Err("schema-qualified names are not supported")?
+            Err(Error::ObjectName {
+                reason: "schema-qualified names are not supported",
+            })?
         }
         match name_parts.first() {
-            None => Err("failed to parse object name, name parts are empty")?,
+            None => Err(Error::ObjectName {
+                reason: "name parts are empty",
+            })?,
             Some(ObjectNamePart::Identifier(ident)) => Ok(ident.value.clone()),
-            Some(ObjectNamePart::Function(_)) => {
-                Err("failed to parse object name, function names are not supported")?
-            }
+            Some(ObjectNamePart::Function(_)) => Err(Error::ObjectName {
+                reason: "function names are not supported",
+            })?,
         }
     }
 
@@ -1096,29 +1110,37 @@ impl Ast {
         }: &SqlParserCreateTable,
     ) -> Result<Ast> {
         if *or_replace {
-            Err("'or replace' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "or replace",
+            })?
         }
         if *temporary {
-            Err("temporary is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "temporary",
+            })?
         }
         if *external {
-            Err("external is not supported in create table")?
+            Err(Error::CreateTable { reason: "external" })?
         }
         if global.is_some() {
-            Err("global is not supported in create table")?
+            Err(Error::CreateTable { reason: "global" })?
         }
         if *transient {
-            Err("transient is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "transient",
+            })?
         }
         if *volatile {
-            Err("volatile is not supported in create table")?
+            Err(Error::CreateTable { reason: "volatile" })?
         }
         if *iceberg {
-            Err("iceberg is not supported in create table")?
+            Err(Error::CreateTable { reason: "iceberg" })?
         }
         match hive_distribution {
             HiveDistributionStyle::NONE => {}
-            _ => Err("hive distribution style is not supported in create_table")?,
+            _ => Err(Error::CreateTable {
+                reason: "hive distribution style",
+            })?,
         }
 
         // Hive formats for some reason are always Some()
@@ -1133,152 +1155,208 @@ impl Ast {
                 || storage.is_some()
                 || location.is_some())
         {
-            Err("hive formats are not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "hive formats",
+            })?
         }
 
         if file_format.is_some() {
-            Err("file format is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "file format",
+            })?
         }
         if location.is_some() {
-            Err("location is not supported in create table")?
+            Err(Error::CreateTable { reason: "location" })?
         }
         if query.is_some() {
-            Err("query is not supported in create table")?
+            Err(Error::CreateTable { reason: "query" })?
         }
         if *without_rowid {
-            Err("'without rowid' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "without rowid",
+            })?
         }
         if like.is_some() {
-            Err("'like' is not supported in create table")?
+            Err(Error::CreateTable { reason: "like" })?
         }
         if clone.is_some() {
-            Err("clone is not supported in create table")?
+            Err(Error::CreateTable { reason: "clone" })?
         }
         if comment.is_some() {
-            Err("comment is not supported in create table")?
+            Err(Error::CreateTable { reason: "comment" })?
         }
         if on_commit.is_some() {
-            Err("'on commit' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "on commit",
+            })?
         }
         // ClickHouse "ON CLUSTER" clause:
         if on_cluster.is_some() {
-            Err("'on cluster' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "on cluster",
+            })?
         }
         // ClickHouse "PRIMARY KEY " clause.
         if primary_key.is_some() {
-            Err("primary key is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "primary key",
+            })?
         }
         // ClickHouse "ORDER BY " clause.
         if order_by.is_some() {
-            Err("'order by' is not supported in create table")?
+            Err(Error::CreateTable { reason: "order by" })?
         }
         // BigQuery: A partition expression for the table.
         if partition_by.is_some() {
-            Err("'partition by' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "partition by",
+            })?
         }
         // BigQuery: Table clustering column list.
         if cluster_by.is_some() {
-            Err("'cluster_by' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "cluster by",
+            })?
         }
         // Hive: Table clustering column list.
         if clustered_by.is_some() {
-            Err("'clustered_by' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "clustered by",
+            })?
         }
         // Postgres `INHERITs` clause, which contains the list of tables from which the new table inherits.
         if inherits.is_some() {
-            Err("inherits are not supported in create table")?
+            Err(Error::CreateTable { reason: "inherits" })?
         }
         // SQLite "STRICT" clause.
         if *strict {
-            Err("strict is not supported in create table")?
+            Err(Error::CreateTable { reason: "strict" })?
         }
         // Snowflake "COPY GRANTS" clause.
         if *copy_grants {
-            Err("copy grant is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "copy grant",
+            })?
         }
         // Snowflake "ENABLE_SCHEMA_EVOLUTION" clause.
         if enable_schema_evolution.is_some() {
-            Err("'enable schema evolution' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "enable schema evolution",
+            })?
         }
         // Snowflake "CHANGE_TRACKING" clause.
         if change_tracking.is_some() {
-            Err("'change tracking' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "change tracking",
+            })?
         }
         // Snowflake "DATA_RETENTION_TIME_IN_DAYS" clause.
         if data_retention_time_in_days.is_some() {
-            Err("'data retention time in days' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "data retention time in days",
+            })?
         }
         // Snowflake "MAX_DATA_EXTENSION_TIME_IN_DAYS" clause.
         if max_data_extension_time_in_days.is_some() {
-            Err("'max data extension time in days' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "max data extension time in days",
+            })?
         }
         // Snowflake "DEFAULT_DDL_COLLATION" clause.
         if default_ddl_collation.is_some() {
-            Err("'default ddl collation' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "default ddl collation",
+            })?
         }
         // Snowflake "WITH AGGREGATION POLICY" clause.
         if with_aggregation_policy.is_some() {
-            Err("'with aggregation policy' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "with aggragation policy",
+            })?
         }
         // Snowflake "WITH ROW ACCESS POLICY" clause.
         if with_row_access_policy.is_some() {
-            Err("'with row access policy' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "with row access policy",
+            })?
         }
         // Snowflake "WITH TAG" clause.
         if with_tags.is_some() {
-            Err("'with tags' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "with tags",
+            })?
         }
         // Snowflake "EXTERNAL_VOLUME" clause for Iceberg tables
         if external_volume.is_some() {
-            Err("'external volume' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "external volume",
+            })?
         }
         // Snowflake "BASE_LOCATION" clause for Iceberg tables
         if base_location.is_some() {
-            Err("'base location' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "base location",
+            })?
         }
         // Snowflake "CATALOG" clause for Iceberg tables
         if catalog.is_some() {
-            Err("catalog is not supported in create table")?
+            Err(Error::CreateTable { reason: "catalog" })?
         }
         // Snowflake "CATALOG_SYNC" clause for Iceberg tables
         if catalog_sync.is_some() {
-            Err("'catalog sync' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "catalog sync",
+            })?
         }
         // Snowflake "STORAGE_SERIALIZATION_POLICY" clause for Iceberg tables
         if storage_serialization_policy.is_some() {
-            Err("'storage serialization policy' is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "storage serialization policy",
+            })?
         }
         if *dynamic {
-            Err("'dynamic' is not supported in create table")?
+            Err(Error::CreateTable { reason: "dynamic" })?
         }
         match table_options {
             CreateTableOptions::None => (),
-            _ => Err("table options are not supported in create table")?,
+            _ => Err(Error::CreateTable {
+                reason: "table options",
+            })?,
         };
 
         if version.is_some() {
-            Err("versions are not supported in create table")?
+            Err(Error::CreateTable { reason: "versions" })?
         }
 
         // Snowflake "TARGET_LAG" clause for dybamic tables
         if target_lag.is_some() {
-            Err("target lag is not supportec in create table")?
+            Err(Error::CreateTable {
+                reason: "target lag",
+            })?
         }
         // Snowflake "WAREHOUSE" clause for dybamic tables
         if warehouse.is_some() {
-            Err("warehouse is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "warehouse",
+            })?
         }
         // Snowflake "REFRESH_MODE" clause for dybamic tables
         if refresh_mode.is_some() {
-            Err("refresh mode is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "refresh mode",
+            })?
         }
         // Snowflake "INITIALIZE" clause for dybamic tables
         if initialize.is_some() {
-            Err("initialize is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "initialize",
+            })?
         }
         // Snowflake "REQUIRE USER" clause for dybamic tables
         if *require_user {
-            Err("require user is not supported in create table")?
+            Err(Error::CreateTable {
+                reason: "require user",
+            })?
         }
 
         let name = Self::parse_object_name(name)?;
@@ -1309,27 +1387,33 @@ impl Ast {
     ) -> Result<Ast> {
         // sqlite doesn't support if exists in alter
         if if_exists {
-            Err("if exists is not supported in ALTER TABLE")?
+            Err(Error::AlterTable {
+                reason: "if exists",
+            })?
         }
         // sqlite doesn't support `ON` clause in alter table
         if only {
-            Err("`ON` keyword is not supported in ALTER TABLE")?
+            Err(Error::AlterTable { reason: "on" })?
         }
         // clickhouse syntax
         if on_cluster.is_some() {
-            Err("ON CLUSTER syntax is not supported")?
+            Err(Error::AlterTable {
+                reason: "on cluster",
+            })?
         }
         // hive syntax
         if location.is_some() {
-            Err("LOCATION syntax is not supported")?
+            Err(Error::AlterTable { reason: "location" })?
         }
         // iceberg syntax
         if iceberg {
-            Err("ICEBERG syntax is not supported")?
+            Err(Error::AlterTable { reason: "iceberg" })?
         }
         let name = Self::parse_object_name(name)?;
         if operations.len() != 1 {
-            Err("ALTER TABLE only supports single operation")?
+            Err(Error::AlterTable {
+                reason: "only supports single operation",
+            })?
         }
         let operation = operations.first().unwrap().try_into()?;
         Ok(Ast::AlterTable { name, operation })
@@ -1340,12 +1424,16 @@ impl Ast {
             FunctionArguments::None => vec![],
             FunctionArguments::List(list) => {
                 if !list.clauses.is_empty() {
-                    Err(format!("function clauses are not yet supported: {list:?}"))?
+                    Err(Error::FunctionArguments {
+                        reason: "function clauses are not yet supported",
+                        arguments: Box::new(args.clone()),
+                    })?
                 };
                 if list.duplicate_treatment.is_some() {
-                    Err(format!(
-                        "function duplicate treatment not supported: {list:?}"
-                    ))?
+                    Err(Error::FunctionArguments {
+                        reason: "function duplicate treatment not supported",
+                        arguments: Box::new(args.clone()),
+                    })?
                 }
                 list.args
                     .iter()
@@ -1353,26 +1441,36 @@ impl Ast {
                         // FIXME: move to TryFrom
                         let arg = match arg {
                             sqlparser::ast::FunctionArg::ExprNamed { .. } => {
-                                Err("named expressions are not supported in function arguments")?
+                                Err(Error::FunctionArgument {
+                                    reason: "named expressions",
+                                    argument: Box::new(arg.clone()),
+                                })?
                             }
                             sqlparser::ast::FunctionArg::Named { .. } => {
-                                Err("named columns are not supported in function arguments(yet)")?
+                                Err(Error::FunctionArgument {
+                                    reason: "named columns",
+                                    argument: Box::new(arg.clone()),
+                                })?
                             }
                             sqlparser::ast::FunctionArg::Unnamed(expr) => match expr {
                                 sqlparser::ast::FunctionArgExpr::Wildcard => FunctionArg::Wildcard,
                                 sqlparser::ast::FunctionArgExpr::Expr(Expr::Identifier(ident)) => {
                                     FunctionArg::Ident(ident.value.clone())
                                 }
-                                _ => Err(format!("unsupported function argument: {expr:?}"))?,
+                                _ => Err(Error::FunctionArgument {
+                                    reason: "unnamed",
+                                    argument: Box::new(arg.clone()),
+                                })?,
                             },
                         };
                         Ok(arg)
                     })
                     .collect::<Result<_>>()?
             }
-            FunctionArguments::Subquery(query) => Err(format!(
-                "function arguments are not yet supported: {query:?}"
-            ))?,
+            FunctionArguments::Subquery(query) => Err(Error::FunctionArguments {
+                reason: "subquery",
+                arguments: Box::new(args.clone()),
+            })?,
         };
         Ok(args)
     }
@@ -1395,45 +1493,61 @@ impl Ast {
         }: &CreateIndex,
     ) -> Result<Self> {
         if *if_not_exists {
-            Err("`CREATE INDEX` with existance check is not supported")?
+            Err(Error::CreateIndex {
+                reason: "existance check",
+            })?
         };
         if name.is_none() {
-            Err("`CREATE INDEX` without name is not supported")?
+            Err(Error::CreateIndex { reason: "nameless" })?
         }
         if *concurrently {
-            Err("concurrent `CREATE INDEX` is not supported")?
+            Err(Error::CreateIndex {
+                reason: "concurrent",
+            })?
         }
         if using.is_some() {
-            Err("`CREATE INDEX` with `USING` keyword is not supported")?
+            Err(Error::CreateIndex { reason: "using" })?
         }
         if !include.is_empty() {
-            Err("`CREATE INDEX` with `INCLUDE` is not supported")?
+            Err(Error::CreateIndex { reason: "include" })?
         }
         if nulls_distinct.is_some() {
-            Err("`CREATE INDEX` with `DISTINCT NULLS` is not supported")?
+            Err(Error::CreateIndex {
+                reason: "distinct nulls",
+            })?
         }
         if !with.is_empty() {
-            Err("`CREATE INDEX` with `WITH` keyword is not supported")?
+            Err(Error::CreateIndex { reason: "with" })?
         }
         if predicate.is_some() {
-            Err("`CREATE INDEX` with predicates is not supported")?
+            Err(Error::CreateIndex {
+                reason: "predicate",
+            })?
         }
         // PG only
         if !index_options.is_empty() {
-            Err("`CREATE INDEX` with index options is not supported")?
+            Err(Error::CreateIndex {
+                reason: "index options",
+            })?
         }
         // Mysql only
         if !alter_options.is_empty() {
-            Err("`CREATE INDEX` with alter options is not supported")?
+            Err(Error::CreateIndex {
+                reason: "alter options",
+            })?
         }
         let columns = columns
             .iter()
-            .map(|IndexColumn { column, .. }| -> Result<String> {
-                match &column.expr {
-                    Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
-                    expr => Err(format!("unsupported index column: {expr:?}"))?,
-                }
-            })
+            .map(
+                |index_column @ IndexColumn { column, .. }| -> Result<String> {
+                    match &column.expr {
+                        Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
+                        expr => Err(Error::CreateIndexColumn {
+                            column: Box::new(index_column.clone()),
+                        })?,
+                    }
+                },
+            )
             .collect::<Result<Vec<String>>>()?;
         Ok(Ast::CreateIndex {
             unique: *unique,
@@ -1446,27 +1560,29 @@ impl Ast {
     fn parse_query(query: &Query) -> Result<Ast> {
         // FIXME:
         if query.with.is_some() {
-            Err("CTE is not yet supported")?
+            Err(Error::CTE)?
         }
         if query.fetch.is_some() {
-            Err("FETCH is not supported")?;
+            Err(Error::Fetch)?
         }
         // FIXME:
         if query.limit_clause.is_some() {
-            Err("LIMIT is not yet supported")?
+            Err(Error::Limit)?
         }
         if !query.locks.is_empty() {
-            Err("LOCKS are not supported")?
+            Err(Error::Locks)?
         }
         if query.for_clause.is_some() {
-            Err("FOR clause is not yet supported")?
+            Err(Error::For)?
         }
         let select = match &*query.body {
             SetExpr::Select(select) => &**select,
-            other => Err(format!("only SELECT supported, got:\n{other:#?}"))?,
+            other => Err(Error::Select {
+                set_expr: Box::new(other.clone()),
+            })?,
         };
         if select.top.is_some() || select.top_before_distinct {
-            return Err("TOP statement is not supported")?;
+            return Err(Error::Top)?;
         }
         let projections = select
             .projection
@@ -1483,33 +1599,41 @@ impl Ast {
                             "count" => {
                                 let mut args = Self::parse_function_args(&function.args)?;
                                 if args.len() != 1 {
-                                    Err("COUNT function can only have single argument: {args:?}")?
+                                    Err(Error::Count {
+                                        reason: "function can only have single argument",
+                                        args: args.clone(),
+                                    })?
                                 }
                                 let arg = args.pop().unwrap();
                                 Ok(Projection::Function(Function::Count(arg)))
                             }
-                            name => Err(format!("unsupported function '{name}'"))?,
+                            name => Err(Error::Function {
+                                name: function_name,
+                            })?,
                         }
                     }
                     SelectItem::UnnamedExpr(Expr::Value(value)) => match &value.value {
                         Value::Number(value, _) => Ok(Projection::NumericLiteral(value.clone())),
                         Value::SingleQuotedString(value) => Ok(Projection::String(value.clone())),
-                        value => Err("unsupported value type in projection: {value:?}")?,
+                        value => Err(Error::SelectionValue {
+                            value: Box::new(value.clone()),
+                        })?,
                     },
                     SelectItem::UnnamedExpr(Expr::CompoundIdentifier(values)) => {
                         // SQLite only supports table.column, not schema.table.column or database.table.column
                         if values.len() != 2 {
-                            Err(format!(
-                                "only two-parts compound identifiers are supported, not {}",
-                                values.len()
-                            ))?
+                            Err(Error::CompoundIdentifier {
+                                length: values.len(),
+                            })?
                         }
                         Ok(Projection::CompoundIdentifier(CompoundIdentifier {
                             table: values[0].value.clone(),
                             column: values[1].value.clone(),
                         }))
                     }
-                    _ => Err(format!("unsupported projection: {projection:?}"))?,
+                    _ => Err(Error::Projection {
+                        select_item: Box::new(projection.clone()),
+                    })?,
                 }
             })
             .collect::<Result<Vec<Projection>>>()?;
@@ -1526,33 +1650,47 @@ impl Ast {
                 .iter()
                 .map(|expr| match expr {
                     Expr::Identifier(ident) => Ok(GroupByParameter::Ident(ident.value.clone())),
-                    _ => Err(format!("unsupported expression in group by: {expr:?}"))?,
+                    _ => Err(Error::GroupBy {
+                        reason: "unsupported expression in group by",
+                    })?,
                 })
                 .collect::<Result<Vec<GroupByParameter>>>()?,
-            expr => Err(format!("unsupported group by expression: {expr:?}"))?,
+            expr => Err(Error::GroupBy {
+                reason: "unsupported group by expression",
+            })?,
         };
         let order_by = match query.order_by.as_ref() {
             Some(order_by) => {
                 if order_by.interpolate.is_some() {
-                    Err("order by interpolate is not supported")?;
+                    Err(Error::OrderBy {
+                        reason: "order by interpolate is not supported",
+                    })?;
                 };
                 match &order_by.kind {
-                    sqlparser::ast::OrderByKind::All(_) => Err("order by all is not supported")?,
+                    sqlparser::ast::OrderByKind::All(_) => Err(Error::OrderBy {
+                        reason: "order by all is not supported",
+                    })?,
                     sqlparser::ast::OrderByKind::Expressions(expressions) => expressions
                         .iter()
                         .map(|expression| {
                             if expression.with_fill.is_some() {
-                                Err("with fill is not supported")?
+                                Err(Error::OrderBy {
+                                    reason: "with fill is not supported",
+                                })?
                             }
                             let ident = match &expression.expr {
                                 Expr::Identifier(ident) => ident.value.clone(),
-                                expr => Err(format!("unsupported order by expression: {expr:?}"))?,
+                                expr => Err(Error::OrderBy {
+                                    reason: "unsupported order by expression",
+                                })?,
                             };
                             let option = match &expression.options {
                                 sqlparser::ast::OrderByOptions { nulls_first, .. }
                                     if nulls_first.is_some() =>
                                 {
-                                    Err("order by with nulls first not supported")?
+                                    Err(Error::OrderBy {
+                                        reason: "order by with nulls first not supported",
+                                    })?
                                 }
                                 sqlparser::ast::OrderByOptions { asc, .. } => match asc {
                                     None => OrderOption::None,
@@ -1602,59 +1740,89 @@ impl Ast {
         } = insert;
         // FIXME:
         if or.is_some() {
-            Err("insert or not yet supported")?
+            Err(Error::Insert {
+                reason: "insert or not yet supported",
+            })?
         };
         // FIXME:
         if *ignore {
-            Err("insert ignore is not yet supported")?
+            Err(Error::Insert {
+                reason: "insert ignore is not yet supported",
+            })?
         }
         if !*into {
-            Err("insert without into is not supported")?
+            Err(Error::Insert {
+                reason: "insert without into is not supported",
+            })?
         }
         if table_alias.is_some() {
-            Err("table alias in insert it not supported")?
+            Err(Error::Insert {
+                reason: "table alias in insert it not supported",
+            })?
         }
         if *overwrite {
-            Err("overwrite in insert it not supported")?
+            Err(Error::Insert {
+                reason: "overwrite in insert it not supported",
+            })?
         }
         if !assignments.is_empty() {
-            Err("insert assignments are not supported")?
+            Err(Error::Insert {
+                reason: "insert assignments are not supported",
+            })?
         }
         if partitioned.is_some() || !after_columns.is_empty() {
-            Err("partitioned inserts are not supported")?
+            Err(Error::Insert {
+                reason: "partitioned inserts are not supported",
+            })?
         }
         if *has_table_keyword {
-            Err("insert doesn't support TABLE keyword")?
+            Err(Error::Insert {
+                reason: "insert doesn't support TABLE keyword",
+            })?
         }
         // FIXME:
         if on.is_some() {
-            Err("insert with ON is not supported")?
+            Err(Error::Insert {
+                reason: "insert with ON is not supported",
+            })?
         }
         if returning.is_some() {
-            Err("insert RETURNING is not supported")?
+            Err(Error::Insert {
+                reason: "insert RETURNING is not supported",
+            })?
         }
         if *replace_into {
-            Err("insert with replace into is not supported")?
+            Err(Error::Insert {
+                reason: "insert with replace into is not supported",
+            })?
         }
         if priority.is_some() {
-            Err("insert with priority is not supported")?
+            Err(Error::Insert {
+                reason: "insert with priority is not supported",
+            })?
         }
         if insert_alias.is_some() {
-            Err("insert with insert alias is not supported")?
+            Err(Error::Insert {
+                reason: "insert with insert alias is not supported",
+            })?
         }
         if settings.is_some() {
-            Err("insert with settings is not supported")?
+            Err(Error::Insert {
+                reason: "insert with settings is not supported",
+            })?
         }
         if format_clause.is_some() {
-            Err("insert with format clause is not supported")?
+            Err(Error::Insert {
+                reason: "insert with format clause is not supported",
+            })?
         }
         let name = match &table {
             sqlparser::ast::TableObject::TableName(name) => Self::parse_object_name(name)?,
-            _ => Err("unsupported table name type: {table:?}")?,
+            _ => Err(Error::InsertTableObject)?,
         };
         let source = match source {
             Some(source) => source,
-            None => Err("insert source is empty")?,
+            None => Err(Error::InsertSourceEmpty)?,
         };
         Ok(Ast::Insert {
             table: name,
@@ -1674,7 +1842,9 @@ impl Ast {
                         .collect::<Result<_>>()
                 })
                 .collect::<Result<_>>()?,
-            _ => Err(format!("unsupported insert source values: {values:#?}"))?,
+            _ => Err(Error::Insert {
+                reason: "unsupported insert source values",
+            })?,
         };
         Ok(values)
     }
@@ -1689,27 +1859,35 @@ impl Ast {
         limit: Option<&Expr>,
     ) -> Result<Ast> {
         if from.is_some() {
-            Err("update from table from kind is not supported")?
+            Err(Error::Update {
+                reason: "update from table from kind is not supported",
+            })?
         }
         if returning.is_some() {
-            Err("update with returning is not supported")?
+            Err(Error::Update {
+                reason: "update with returning is not supported",
+            })?
         }
         if or.is_some() {
-            Err("update with OR is not supported")?
+            Err(Error::Update {
+                reason: "update with OR is not supported",
+            })?
         }
         if limit.is_some() {
-            Err("update with LIMIT is not supported")?
+            Err(Error::Update {
+                reason: "update with LIMIT is not supported",
+            })?
         }
         let table = match &table.relation {
             TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
-            _ => Err(format!("unsupported table type: {table:#?}"))?,
+            _ => Err(Error::UpdateTableType)?,
         };
         let assignments = assignments
             .iter()
             .map(|assigment| {
                 let target = match &assigment.target {
                     AssignmentTarget::ColumnName(name) => Self::parse_object_name(name)?,
-                    target => Err(format!("unsupported assignment target: {target:?}"))?,
+                    target => Err(Error::UpdateAssignmentTarget)?,
                 };
                 let value = (&assigment.value).try_into()?;
                 Ok(UpdateAssignment { target, value })
@@ -1727,25 +1905,37 @@ impl Ast {
 
     fn parse_delete(delete: &Delete) -> Result<Ast> {
         if !delete.tables.is_empty() {
-            Err("multi tables delete is not supported")?
+            Err(Error::Delete {
+                reason: "multiple tables",
+            })?
         }
         if delete.using.is_some() {
-            Err("delete with using is not supported")?
+            Err(Error::Delete { reason: "using" })?
         }
         if delete.returning.is_some() {
-            Err("delete with returning is not supported")?
+            Err(Error::Delete {
+                reason: "returning",
+            })?
         }
         if !delete.order_by.is_empty() {
-            Err("delete with order by is not supported")?
+            Err(Error::Delete { reason: "order by" })?
         }
         if delete.limit.is_some() {
-            Err("delete with limit is not supported")?
+            Err(Error::Delete { reason: "limit" })?
         }
 
         let tables = match &delete.from {
             FromTable::WithFromKeyword(tables) => tables,
-            FromTable::WithoutKeyword(_) => Err("delete without from keyword is not supported")?,
+            FromTable::WithoutKeyword(_) => Err(Error::Delete {
+                reason: "without from",
+            })?,
         };
+        if tables.len() != 1 {
+            Err(Error::Delete {
+                reason: "multiple tables",
+            })?
+        }
+
         let from_clause = tables.as_slice().try_into()?;
 
         let selection = delete
@@ -1771,12 +1961,18 @@ impl Ast {
                 DropObjectType::Index,
                 table.map(Self::parse_object_name).transpose()?,
             ),
-            _ => Err(format!("drop of {object_type:?} is not supported"))?,
+            _ => Err(Error::DropObjectType {
+                object_type: *object_type,
+            })?,
         };
         if names.len() > 1 {
-            Err("multiple names are not supported")?
+            Err(Error::Drop {
+                reason: "multiple names are not supported",
+            })?
         }
-        let name = Self::parse_object_name(names.first().ok_or("no drop names found")?)?;
+        let name = Self::parse_object_name(names.first().ok_or(Error::Drop {
+            reason: "no drop names found",
+        })?)?;
         Ok(Ast::Drop {
             object_type,
             if_exists,
@@ -1841,7 +2037,7 @@ impl Ast {
                         limit.as_ref(),
                     )?,
                     Statement::Delete(delete) => Self::parse_delete(delete)?,
-                    _ => Err(format!("unsupported statement: {statement:?}"))?,
+                    _ => Err(Error::Statement)?,
                 };
                 Ok(result)
             })
@@ -2259,8 +2455,12 @@ impl Ast {
         buf.write_all(b"DELETE FROM ")?;
         match from_clause {
             FromClause::Table(name) => Self::write_quoted(dialect, buf, name)?,
-            FromClause::None => Err("DELETE without FROM is not supported")?,
-            FromClause::TableWithJoin(_) => Err("DELETE with joins is not supported")?,
+            FromClause::None => Err(Error::DeleteToSql {
+                reason: "DELETE without FROM is not supported",
+            })?,
+            FromClause::TableWithJoin(_) => Err(Error::DeleteToSql {
+                reason: "DELETE with joins is not supported",
+            })?,
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
@@ -2294,7 +2494,7 @@ impl Ast {
                 buf.write_all(b" ON ")?;
                 Self::write_quoted(dialect, buf, table)?;
             }
-            (true, _, None) => Err("`DROP INDEX` requires table name")?,
+            (true, _, None) => Err(Error::DropIndex)?,
             _ => (),
         };
         Ok(())
@@ -2355,7 +2555,7 @@ impl Ast {
     }
 
     pub fn to_sql(&self, dialect: &dyn ToQuery) -> Result<String> {
-        let buf = &mut Cursor::new(Vec::with_capacity(1024));
+        let buf = &mut Cursor::new(Vec::with_capacity(1));
         match self {
             Ast::CreateTable {
                 if_not_exists,
@@ -2484,9 +2684,7 @@ impl ToQuery for MySqlDialect {
                 options = options.set_auto_increment();
                 Cow::Borrowed("BIGINT")
             }
-            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
-                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
-            }
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => Err(Error::Serial)?,
             DataType::I16 => Cow::Borrowed("SMALLLINT"),
             DataType::I32 => Cow::Borrowed("INT"),
             DataType::I64 => Cow::Borrowed("BIGINT"),
@@ -2558,9 +2756,7 @@ impl ToQuery for PostgreSqlDialect {
             DataType::SmallSerial if options.is_primary_key() => Cow::Borrowed("SMALLSERIAL"),
             DataType::Serial if options.is_primary_key() => Cow::Borrowed("SERIAL"),
             DataType::BigSerial if options.is_primary_key() => Cow::Borrowed("BIGSERIAL"),
-            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
-                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
-            }
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => Err(Error::Serial)?,
             DataType::I16 if options.is_primary_key() && options.is_auto_increment() => {
                 Cow::Borrowed("SMALLSERIAL")
             }
@@ -2634,9 +2830,7 @@ impl ToQuery for SQLiteDialect {
             {
                 Cow::Borrowed("INTEGER")
             }
-            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => {
-                Err("expected smallserial/serial/bigserial with `PRIMARY KEY` constraint")?
-            }
+            DataType::SmallSerial | DataType::Serial | DataType::BigSerial => Err(Error::Serial)?,
             DataType::I16 | DataType::I32 | DataType::I64 if options.is_primary_key() => {
                 // Sqlite doesn't need auto increment for integer primary key, since it's already auto incremented
                 // in nature

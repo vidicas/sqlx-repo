@@ -1,4 +1,4 @@
-use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
 fn delete_from() {
@@ -38,4 +38,54 @@ fn delete_from_where() {
         ast.to_sql(&SQLiteDialect {}).unwrap(),
         "DELETE FROM `test` WHERE `key` = 1"
     );
+}
+
+#[test]
+fn delete_multiple_tables() {
+    let query = "DELETE FROM t1, t2 WHERE id = 1";
+    let err = parse(query).unwrap_err();
+    assert_eq!(
+        err,
+        Error::Delete {
+            reason: "multiple tables"
+        }
+    );
+    assert_eq!(err.to_string(), "unsupported delete: multiple tables");
+}
+
+#[test]
+fn delete_using() {
+    let query = "DELETE FROM t1 USING t2";
+    let err = parse(query).unwrap_err();
+    assert_eq!(err, Error::Delete { reason: "using" });
+    assert_eq!(err.to_string(), "unsupported delete: using");
+}
+
+#[test]
+fn delete_returning() {
+    let query = "DELETE FROM t1 RETURNING t1.id";
+    let err = parse(query).unwrap_err();
+    assert_eq!(
+        err,
+        Error::Delete {
+            reason: "returning"
+        }
+    );
+    assert_eq!(err.to_string(), "unsupported delete: returning");
+}
+
+#[test]
+fn delete_order_by() {
+    let query = "DELETE FROM t1 ORDER BY created_at";
+    let err = parse(query).unwrap_err();
+    assert_eq!(err, Error::Delete { reason: "order by" });
+    assert_eq!(err.to_string(), "unsupported delete: order by");
+}
+
+#[test]
+fn delete_limit() {
+    let query = "DELETE FROM t1 LIMIT 10";
+    let err = parse(query).unwrap_err();
+    assert_eq!(err, Error::Delete { reason: "limit" });
+    assert_eq!(err.to_string(), "unsupported delete: limit");
 }
