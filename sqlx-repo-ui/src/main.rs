@@ -39,6 +39,7 @@ fn main() {
 
 fn App() -> Element {
     rsx! {
+        document::Title { "Sqlx Repo Playground" }
         Router::<Route> {}
     }
 }
