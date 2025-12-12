@@ -12,6 +12,14 @@
  consistently and predictably across supported backends. Features which are only specific to a particular
  database are deliberately excluded from this core.
 
+### Docs
+
+https://docs.rs/sqlx-repo/latest/sqlx_repo/
+
+### Playground
+
+Debug and check your queries in all dialects: https://vidicas.github.io/sqlx-repo
+
 ## License
 
 Licensed under either of:
