@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 use dioxus_logger::tracing::Level;
 
+use sql_bridge::__hidden::sqlparser::{dialect::GenericDialect, parser::Parser as HiddenParser};
 use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[macro_export]
@@ -116,11 +117,13 @@ pub fn Playground() -> Element {
     let mut sqlite = use_signal(|| String::from(message));
     let mut postgresql = use_signal(|| String::from(message));
     let mut mysql = use_signal(|| String::from(message));
+    let mut ast_details = use_signal(|| String::new());
 
-    let mut clear_dialects = move || {
+    let mut clear = move || {
         *sqlite.write() = message.to_string();
         *postgresql.write() = message.to_string();
         *mysql.write() = message.to_string();
+        *ast_details.write() = "".to_string();
     };
 
     let mut status = use_signal(|| String::new());
@@ -138,24 +141,24 @@ pub fn Playground() -> Element {
                     let sql = evt.value().to_string();
                     if sql.is_empty() {
                         *status.write() = "".to_string();
-                        clear_dialects();
+                        clear();
                         return
                     };
 
                     *input_sql.write() = sql.clone();
 
-                    let mut ast = match parse(sql) {
+                    let mut ast = match parse(sql.clone()) {
                         Ok(res) => res,
                         Err(e) => {
                             *status.write() = format!("Invalid query: {e:#?}");
-                            clear_dialects();
+                            clear();
                             return
                         }
                     };
 
                     if ast.is_empty() {
                         *status.write() = format!("Empty AST");
-                        clear_dialects();
+                        clear();
                         return
                     }
 
@@ -164,11 +167,33 @@ pub fn Playground() -> Element {
                     *postgresql.write() = ast.to_sql(&PostgreSqlDialect{}).unwrap();
                     *mysql.write() = ast.to_sql(&MySqlDialect {}).unwrap();
                     *status.write() = "".to_string();
+
+                    let hidden_ast = match HiddenParser::parse_sql(&GenericDialect {}, &sql) {
+                        Ok(a) => format!("{:?}", a),
+                        Err(_) => "Failed".to_string(),
+                    };
+                    *ast_details.write() = format!("Sqlx Repo AST: {:?} \n\nSql Parser AST: {}", ast, hidden_ast);
                 }
             }
             div {
                 class: "whitespace-pre-wrap break-words break-all label text-sm text-red-800",
                 {status}
+            }
+            if !ast_details().is_empty() {
+                div {
+                    class: "collapse collapse-arrow",
+                    input {
+                        type: "checkbox"
+                    }
+                    div {
+                        class: "collapse-title text-sm p-0 after:start-17 after:end-auto after:top-3 after:translate-y-0",
+                        "AST details"
+                    }
+                    div {
+                        class: "collapse-content text-xs p-0 whitespace-pre-wrap break-words break-all tracking-wide",
+                        "{ast_details}"
+                    }
+                }
             }
         }
         div {

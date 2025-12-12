@@ -2,7 +2,7 @@
 @source "./src/**/*.{rs,html,css}";
 
 @plugin "@tailwindcss/typography";
-@plugin "daisyui"
+@plugin "daisyui";
 
 fieldset {
     @apply outline-none;
