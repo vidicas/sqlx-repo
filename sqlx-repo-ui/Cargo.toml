@@ -8,7 +8,5 @@ readme.workspace = true
 
 [dependencies]
 dioxus = { version = "0.7", features = ["web", "router"] }
-dioxus-free-icons = { version = "0.10", features = ["bootstrap"] }
-hex = { version = "0.4.3" }
 sql-bridge = { path = "../sql-bridge" }
 dioxus-logger = "0.7"
