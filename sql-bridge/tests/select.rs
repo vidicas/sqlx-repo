@@ -1,4 +1,4 @@
-use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
 fn test_simple_query() {
@@ -89,9 +89,12 @@ fn query_with_too_many_ident_compounds() {
     let input = "select schema.foo.id from foo";
     let res = parse(input);
     assert!(res.is_err());
-
-    let err = res.unwrap_err().to_string();
-    assert!(err.contains("only two-parts compound identifiers are supported"));
+    let err = res.unwrap_err();
+    assert_eq!(err, Error::CompoundIdentifier { length: 3 });
+    assert_eq!(
+        err.to_string(),
+        "unsupported compound identifier with length 3"
+    );
 }
 
 #[test]
@@ -370,8 +373,12 @@ fn select_with_join_too_many_indent_compounds() {
     let res = parse(input);
     assert!(res.is_err());
 
-    let err = res.unwrap_err().to_string();
-    assert!(err.contains("only two-parts compound identifiers are supported"));
+    let err = res.unwrap_err();
+    assert_eq!(err, Error::CompoundIdentifier { length: 3 });
+    assert_eq!(
+        err.to_string(),
+        "unsupported compound identifier with length 3"
+    );
 }
 
 #[test]
