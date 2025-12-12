@@ -9,3 +9,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub fn parse<T: AsRef<str>>(statement: T) -> Result<Vec<Ast>> {
     Ast::parse(statement.as_ref())
 }
+
+#[doc(hidden)]
+pub mod __hidden {
+    pub use sqlparser;
+}
