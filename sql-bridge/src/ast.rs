@@ -678,7 +678,9 @@ impl TryFrom<&Expr> for Selection {
                     list,
                 }
             }
-            expr => Err(Error::SelectionFromExpr { expr: Box::new(expr.clone()) })?,
+            expr => Err(Error::SelectionFromExpr {
+                expr: Box::new(expr.clone()),
+            })?,
         };
         Ok(selection)
     }
@@ -732,9 +734,7 @@ impl TryFrom<&Expr> for InsertSource {
                         source: Box::new(expr.as_ref().try_into()?),
                     });
                 }
-                _ => Err(Error::InsertSourceExpression {
-                    expr: expr.clone(),
-                })?,
+                _ => Err(Error::InsertSourceExpression { expr: expr.clone() })?,
             },
             value => Err(Error::InsertSourceExpression {
                 expr: Box::new(value.clone()),
@@ -773,7 +773,9 @@ impl TryFrom<&Expr> for UpdateValue {
     fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
         let value = match expr {
             Expr::Value(value) => &value.value,
-            expr => Err(Error::UpdateExpression { expr: Box::new(expr.clone()) })?,
+            expr => Err(Error::UpdateExpression {
+                expr: Box::new(expr.clone()),
+            })?,
         };
         let update_value = match value {
             Value::Null => UpdateValue::Null,
@@ -864,7 +866,9 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
                     constraint: Box::new(other.clone()),
                 })?,
             },
-            other => Err(Error::JoinOperator { op: Box::new(other.clone()) })?,
+            other => Err(Error::JoinOperator {
+                op: Box::new(other.clone()),
+            })?,
         };
 
         Ok(Self { name, operator })
@@ -1029,7 +1033,9 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                     name: column_names.first().unwrap().value.clone(),
                 }
             }
-            op => Err(Error::AlterTableOp { op: Box::new(op.clone()) })?,
+            op => Err(Error::AlterTableOp {
+                op: Box::new(op.clone()),
+            })?,
         };
         Ok(op)
     }
@@ -1743,80 +1749,70 @@ impl Ast {
         } = insert;
         // FIXME:
         if or.is_some() {
-            Err(Error::Insert {
-                reason: "insert or not yet supported",
-            })?
+            Err(Error::Insert { reason: "or" })?
         };
         // FIXME:
         if *ignore {
-            Err(Error::Insert {
-                reason: "insert ignore is not yet supported",
-            })?
+            Err(Error::Insert { reason: "ignore" })?
         }
         if !*into {
             Err(Error::Insert {
-                reason: "insert without into is not supported",
+                reason: "missing into",
             })?
         }
         if table_alias.is_some() {
             Err(Error::Insert {
-                reason: "table alias in insert it not supported",
+                reason: "table alias",
             })?
         }
         if *overwrite {
             Err(Error::Insert {
-                reason: "overwrite in insert it not supported",
+                reason: "overwrite",
             })?
         }
         if !assignments.is_empty() {
             Err(Error::Insert {
-                reason: "insert assignments are not supported",
+                reason: "assignments",
             })?
         }
         if partitioned.is_some() || !after_columns.is_empty() {
             Err(Error::Insert {
-                reason: "partitioned inserts are not supported",
+                reason: "partitioned",
             })?
         }
         if *has_table_keyword {
             Err(Error::Insert {
-                reason: "insert doesn't support TABLE keyword",
+                reason: "table keyword",
             })?
         }
         // FIXME:
         if on.is_some() {
             Err(Error::Insert {
-                reason: "insert with ON is not supported",
+                reason: "on keyword",
             })?
         }
         if returning.is_some() {
             Err(Error::Insert {
-                reason: "insert RETURNING is not supported",
+                reason: "returning",
             })?
         }
         if *replace_into {
-            Err(Error::Insert {
-                reason: "insert with replace into is not supported",
-            })?
+            Err(Error::Insert { reason: "replace" })?
         }
         if priority.is_some() {
-            Err(Error::Insert {
-                reason: "insert with priority is not supported",
-            })?
+            Err(Error::Insert { reason: "priority" })?
         }
         if insert_alias.is_some() {
             Err(Error::Insert {
-                reason: "insert with insert alias is not supported",
+                reason: "insert alias",
             })?
         }
         if settings.is_some() {
-            Err(Error::Insert {
-                reason: "insert with settings is not supported",
-            })?
+            Err(Error::Insert { reason: "settings" })?
         }
         if format_clause.is_some() {
             Err(Error::Insert {
-                reason: "insert with format clause is not supported",
+                reason: "format clause",
             })?
         }
         let name = match &table {
@@ -1845,8 +1841,8 @@ impl Ast {
                         .collect::<Result<_>>()
                 })
                 .collect::<Result<_>>()?,
-            _ => Err(Error::Insert {
-                reason: "unsupported insert source values",
+            other => Err(Error::InsertSource {
+                set_expr: Box::new(other.clone()),
             })?,
         };
         Ok(values)
@@ -1968,14 +1964,12 @@ impl Ast {
                 object_type: *object_type,
             })?,
         };
-        if names.len() > 1 {
-            Err(Error::Drop {
-                reason: "multiple names are not supported",
-            })?
-        }
-        let name = Self::parse_object_name(names.first().ok_or(Error::Drop {
-            reason: "no drop names found",
-        })?)?;
+        let name = match names {
+            [table_name] => Self::parse_object_name(table_name)?,
+            _ => Err(Error::Drop {
+                reason: "multiple tables",
+            })?,
+        };
         Ok(Ast::Drop {
             object_type,
             if_exists,
