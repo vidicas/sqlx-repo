@@ -10,3 +10,5 @@ readme.workspace = true
 dioxus = { version = "0.7", features = ["web", "router"] }
 sql-bridge = { path = "../sql-bridge" }
 dioxus-logger = "0.7"
+flate2 = "1"
+base64 = "0.22"
