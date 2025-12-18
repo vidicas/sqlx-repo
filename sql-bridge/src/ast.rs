@@ -1856,12 +1856,12 @@ impl Ast {
     ) -> Result<Ast> {
         if from.is_some() {
             Err(Error::Update {
-                reason: "update from table from kind is not supported",
+                reason: "from table",
             })?
         }
         if returning.is_some() {
             Err(Error::Update {
-                reason: "update with returning is not supported",
+                reason: "returning",
             })?
         }
         if or.is_some() {

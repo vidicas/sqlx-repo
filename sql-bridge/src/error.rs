@@ -15,7 +15,8 @@ pub struct IoErrorWrap(io::Error);
 
 impl PartialEq for IoErrorWrap {
     fn eq(&self, other: &Self) -> bool {
-        self.0.kind() == other.0.kind()
+        // FIXME: not sure if it's reasonable
+        self.0.kind() == other.0.kind() && self.0.to_string() == other.0.to_string()
     }
 }
 
@@ -380,7 +381,7 @@ impl std::fmt::Display for Error {
                 write!(f, "unsupported insert source: {set_expr:?}")
             }
             Error::Update { reason } => {
-                write!(f, "{reason}")
+                write!(f, "unsupported update: {reason}")
             }
             Error::UpdateTableType => {
                 write!(f, "unsupported table type")
