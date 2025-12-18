@@ -1,7 +1,12 @@
 #![allow(non_snake_case)]
+use std::io::{Read, Write};
 
 use dioxus::prelude::*;
 use dioxus_logger::tracing::Level;
+
+use base64::{Engine as _, engine::general_purpose::URL_SAFE};
+use flate2::Compression;
+use flate2::{read::GzDecoder, write::ZlibEncoder};
 
 use sql_bridge::__hidden::sqlparser::{dialect::GenericDialect, parser::Parser as HiddenParser};
 use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
@@ -25,6 +30,9 @@ macro_rules! local_asset {
 enum Route {
     #[route("/:..route")]
     Home { route: Vec<String> },
+
+    #[route("/shared/:sql")]
+    Shared { sql: String },
 }
 
 fn main() {
@@ -53,6 +61,28 @@ pub fn Home(route: Vec<String>) -> Element {
                 class: "w-full",
                 Header { }
                 Body { }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn Shared(sql: String) -> Element {
+    // Handle
+    let s = URL_SAFE.decode(sql.as_bytes()).unwrap();
+
+    let mut d = GzDecoder::new(s.as_slice());
+    let mut s2 = String::new();
+    // Handle
+    d.read_to_string(&mut s2).unwrap();
+
+    rsx! {
+        div {
+            class: "flex w-full px-8 py-4",
+            div {
+                class: "w-full",
+                Header { }
+                Body { sql: Some(s2)}
             }
         }
     }
@@ -96,13 +126,14 @@ pub fn Header() -> Element {
     }
 }
 
-pub fn Body() -> Element {
+#[component]
+pub fn Body(sql: Option<String>) -> Element {
     rsx! {
         div {
             class: "flex h-full text-gray-600 space-x-4",
             div {
                 class: "flex-1/2 space-y-4 tracking-tighter",
-                Playground { },
+                Playground { sql },
             }
             div {
                 class: "flex-1/2",
@@ -112,13 +143,15 @@ pub fn Body() -> Element {
     }
 }
 
-pub fn Playground() -> Element {
-    let mut input_sql = use_signal(String::new);
-    let message = "Waiting for SQL...";
+#[component]
+pub fn Playground(sql: Option<String>) -> Element {
+    let mut input_sql = use_signal(|| String::new());
+    let message = "Waiting for SQL ...";
     let mut sqlite = use_signal(|| String::from(message));
     let mut postgresql = use_signal(|| String::from(message));
     let mut mysql = use_signal(|| String::from(message));
-    let mut ast_details = use_signal(String::new);
+    let mut ast_details = use_signal(|| String::new());
+    let mut status = use_signal(|| String::new());
 
     let mut clear = move || {
         *sqlite.write() = message.to_string();
@@ -127,7 +160,60 @@ pub fn Playground() -> Element {
         *ast_details.write() = "".to_string();
     };
 
-    let mut status = use_signal(String::new);
+    let mut handle_query = move |sql: String| {
+        if sql.is_empty() {
+            *status.write() = "".to_string();
+            clear();
+            return;
+        };
+
+        *input_sql.write() = sql.clone();
+
+        let mut ast = match parse(sql.clone()) {
+            Ok(res) => res,
+            Err(e) => {
+                *status.write() = format!("Invalid query: {e:#?}");
+                clear();
+                return;
+            }
+        };
+
+        if ast.is_empty() {
+            *status.write() = format!("Empty AST");
+            clear();
+            return;
+        }
+
+        let ast = ast.pop().unwrap();
+        *sqlite.write() = ast.to_sql(&SQLiteDialect {}).unwrap();
+        *postgresql.write() = ast.to_sql(&PostgreSqlDialect {}).unwrap();
+        *mysql.write() = ast.to_sql(&MySqlDialect {}).unwrap();
+        *status.write() = "".to_string();
+
+        let hidden_ast = match HiddenParser::parse_sql(&GenericDialect {}, &sql) {
+            Ok(a) => format!("{:?}", a),
+            Err(_) => "Failed".to_string(),
+        };
+        *ast_details.write() = format!(
+            "Sqlx Repo AST: {:?} \n\nSql Parser AST: {}",
+            ast, hidden_ast
+        );
+    };
+
+    if let Some(s) = sql {
+        handle_query(s)
+    }
+
+    let mut open = use_signal(|| false);
+
+    let encoded_sql = move || -> String {
+        let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
+        e.write_all(input_sql().as_bytes());
+        // Handle
+        let compressed = e.finish().unwrap();
+        URL_SAFE.encode(compressed.as_slice())
+    };
+
     rsx! {
         fieldset {
             class: "fieldset bg-base-200 border-base-300 border p-4",
@@ -135,45 +221,68 @@ pub fn Playground() -> Element {
                 class: "text-base",
                 "Insert your query below to check it against SQLite, PostgreSQL and MySQL"
             }
-            textarea {
-                class: "textarea w-full",
-                placeholder: "Your SQL query",
-                oninput: move |evt| {
-                    let sql = evt.value().to_string();
-                    if sql.is_empty() {
-                        *status.write() = "".to_string();
-                        clear();
-                        return
-                    };
-
-                    *input_sql.write() = sql.clone();
-
-                    let mut ast = match parse(sql.clone()) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            *status.write() = format!("Invalid query: {e:#?}");
-                            clear();
-                            return
-                        }
-                    };
-
-                    if ast.is_empty() {
-                        *status.write() = "Empty AST".to_string();
-                        clear();
-                        return
+            div {
+                style: "position: relative;",
+                textarea {
+                    class: "textarea w-full",
+                    style: "padding-top: 34px",
+                    placeholder: "Your SQL query",
+                    oninput: move |evt| {
+                        let sql = evt.value().to_string();
+                        handle_query(sql);
                     }
-
-                    let ast = ast.pop().unwrap();
-                    *sqlite.write() = ast.to_sql(&SQLiteDialect{}).unwrap();
-                    *postgresql.write() = ast.to_sql(&PostgreSqlDialect{}).unwrap();
-                    *mysql.write() = ast.to_sql(&MySqlDialect {}).unwrap();
-                    *status.write() = "".to_string();
-
-                    let hidden_ast = match HiddenParser::parse_sql(&GenericDialect {}, &sql) {
-                        Ok(a) => format!("{:?}", a),
-                        Err(_) => "Failed".to_string(),
-                    };
-                    *ast_details.write() = format!("Sqlx Repo AST: {:?} \n\nSql Parser AST: {}", ast, hidden_ast);
+                }
+                div {
+                    class: "toolbar",
+                    div {
+                        class: "btn btn-xs btn-ghost btn-square",
+                        onclick: move |_| open.set(true),
+                        svg {
+                            view_box: "0 0 24 24",
+                            width: "16",
+                            height: "16",
+                            fill: "none",
+                            stroke: "#707070",
+                            path {
+                                d: "M8.68439 10.6578L15.3124 7.34378 M15.3156 16.6578L8.69379 13.3469 M21 6C21 7.65685 19.6569 9 18 9C16.3431 9 15 7.65685 15 6C15 4.34315 16.3431 3 18 3C19.6569 3 21 4.34315 21 6ZM9 12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12C3 10.3431 4.34315 9 6 9C7.65685 9 9 10.3431 9 12ZM21 18C21 19.6569 19.6569 21 18 21C16.3431 21 15 19.6569 15 18C15 16.3431 16.3431 15 18 15C19.6569 15 21 16.3431 21 18Z",
+                                stroke_width: "1.5",
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                            }
+                        }
+                    }
+                    if open() {
+                        dialog {
+                            open: true,
+                            class: "modal",
+                            onclick: move |_| open.set(false),
+                            div {
+                                class: "modal-box",
+                                onclick: |e| e.stop_propagation(),
+                                h3 { class: "text-lg font-bold", "Hello!" }
+                                p {
+                                    class: "py-4",
+                                    "{encoded_sql()}"
+                                }
+                                form {
+                                    method: "dialog",
+                                    class: "modal-action",
+                                    button {
+                                        class: "btn",
+                                        onclick: move |_| open.set(false),
+                                        "Close"
+                                    }
+                                }
+                            }
+                            form {
+                                method: "dialog",
+                                class: "modal-backdrop",
+                                button {
+                                    onclick: move |_| open.set(false),
+                                }
+                            }
+                        }
+                    }
                 }
             }
             div {

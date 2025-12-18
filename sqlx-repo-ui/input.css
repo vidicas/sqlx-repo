@@ -11,3 +11,11 @@ fieldset {
 *:focus {
     @apply outline-none;
 }
+
+.toolbar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: flex;
+    gap: 8px,
+}
