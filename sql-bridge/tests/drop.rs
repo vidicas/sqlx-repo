@@ -1,4 +1,4 @@
-use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
 fn drop_index() {
@@ -47,8 +47,14 @@ fn drop_table() {
 #[test]
 fn drop_multiple_table() {
     let input = "DROP TABLE test1, test2";
-    let ast = parse(input);
-    assert!(ast.is_err());
+    let err = parse(input).unwrap_err();
+    assert_eq!(
+        err,
+        Error::Drop {
+            reason: "multiple tables"
+        }
+    );
+    assert_eq!(err.to_string(), "unsupported drop: multiple tables");
 }
 
 #[test]

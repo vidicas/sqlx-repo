@@ -164,8 +164,11 @@ pub enum Error {
     Insert {
         reason: &'static str,
     },
-    InsertTableObject,
     InsertSourceEmpty,
+    InsertTableObject,
+    InsertSource {
+        set_expr: Box<SetExpr>,
+    },
     Update {
         reason: &'static str,
     },
@@ -365,13 +368,16 @@ impl std::fmt::Display for Error {
                 write!(f, "{reason}")
             }
             Error::Insert { reason } => {
-                write!(f, "{reason}")
+                write!(f, "unsupported insert: {reason}")
+            }
+            Error::InsertSourceEmpty => {
+                write!(f, "unsupported insert, source is empty")
             }
             Error::InsertTableObject => {
                 write!(f, "unsupported table name type")
             }
-            Error::InsertSourceEmpty => {
-                write!(f, "insert source is empty")
+            Error::InsertSource { set_expr } => {
+                write!(f, "unsupported insert source: {set_expr:?}")
             }
             Error::Update { reason } => {
                 write!(f, "{reason}")
