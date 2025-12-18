@@ -1,7 +1,7 @@
-use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
-fn test_basic_insert() {
+fn basic_insert() {
     let input = "update test set value='foo' where key = 1";
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -19,4 +19,22 @@ fn test_basic_insert() {
         ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "UPDATE \"test\" SET \"value\"='foo' WHERE \"key\" = 1"
     );
+}
+
+
+#[test]
+fn update_from() {
+    let input = "UPDATE target_table SET key=value FROM source_table";
+    let err = parse(input).unwrap_err();
+    assert_eq!(err, Error::Update { reason: "from table" });
+    assert_eq!(err.to_string(), "unsupported update: from table");
+}
+
+
+#[test]
+fn update_returning() {
+    let input = "UPDATE target_table SET key=value RETURNING table.id";
+    let err = parse(input).unwrap_err();
+    assert_eq!(err, Error::Update { reason: "returning" });
+    assert_eq!(err.to_string(), "unsupported update: returning");
 }
