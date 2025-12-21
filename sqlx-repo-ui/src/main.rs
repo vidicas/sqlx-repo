@@ -6,7 +6,9 @@ use dioxus_logger::tracing::Level;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 use flate2::Compression;
-use flate2::{read::GzDecoder, write::ZlibEncoder};
+use flate2::{read::GzDecoder, write::GzEncoder};
+use gloo_timers::callback::Timeout;
+use url::Url;
 
 use sql_bridge::__hidden::sqlparser::{dialect::GenericDialect, parser::Parser as HiddenParser};
 use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
@@ -26,13 +28,39 @@ macro_rules! local_asset {
     }};
 }
 
+pub fn copy_to_clipboard(text: &str) {
+    let navigator = match web_sys::window() {
+        Some(window) => window.navigator(),
+        None => {
+            error!("window object is not accessible");
+            return;
+        }
+    };
+    let _ = navigator.clipboard().write_text(text);
+}
+
+pub fn location() -> Url {
+    let location: String = web_sys::window()
+        .expect("failed to get access to window")
+        .location()
+        .to_string()
+        .into();
+    let url: Url = location.parse().expect("failed to parse location");
+    url
+}
+
+pub fn base_url() -> Url {
+    let mut url: Url = location();
+    // Reset path and fragments
+    url.set_path("");
+    url.set_fragment(None);
+    url
+}
+
 #[derive(Clone, Routable, Debug, PartialEq)]
 enum Route {
     #[route("/:..route")]
     Home { route: Vec<String> },
-
-    #[route("/shared/:sql")]
-    Shared { sql: String },
 }
 
 fn main() {
@@ -54,35 +82,46 @@ fn App() -> Element {
 
 #[component]
 pub fn Home(route: Vec<String>) -> Element {
-    rsx! {
-        div {
-            class: "flex w-full px-8 py-4",
-            div {
-                class: "w-full",
-                Header { }
-                Body { }
+    let url = location();
+    if let Some(fragment) = url.fragment() {
+        let decoded_fragment = match URL_SAFE.decode(fragment.as_bytes()) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to decode a fragment {fragment}, {e}");
+                return rsx! {
+                    Main { }
+                };
             }
+        };
+
+        let mut decoder = GzDecoder::new(decoded_fragment.as_slice());
+        let mut ungzipped = String::new();
+        if let Err(e) = decoder.read_to_string(&mut ungzipped) {
+            error!("Failed to ungzip a fragment {fragment}, {e}");
+            return rsx! {
+                Main { }
+            };
+        };
+
+        rsx! {
+            Main { sql: Some(ungzipped) }
+        }
+    } else {
+        rsx! {
+            Main { }
         }
     }
 }
 
 #[component]
-pub fn Shared(sql: String) -> Element {
-    // Handle
-    let s = URL_SAFE.decode(sql.as_bytes()).unwrap();
-
-    let mut d = GzDecoder::new(s.as_slice());
-    let mut s2 = String::new();
-    // Handle
-    d.read_to_string(&mut s2).unwrap();
-
+pub fn Main(sql: Option<String>) -> Element {
     rsx! {
         div {
             class: "flex w-full px-8 py-4",
             div {
                 class: "w-full",
                 Header { }
-                Body { sql: Some(s2)}
+                Body { sql: sql}
             }
         }
     }
@@ -145,13 +184,16 @@ pub fn Body(sql: Option<String>) -> Element {
 
 #[component]
 pub fn Playground(sql: Option<String>) -> Element {
-    let mut input_sql = use_signal(|| String::new());
     let message = "Waiting for SQL ...";
+    let base_url = base_url();
+
+    let mut input_sql = use_signal(|| String::new());
     let mut sqlite = use_signal(|| String::from(message));
     let mut postgresql = use_signal(|| String::from(message));
     let mut mysql = use_signal(|| String::from(message));
     let mut ast_details = use_signal(|| String::new());
     let mut status = use_signal(|| String::new());
+    let mut encoded_query = use_signal(|| String::new());
 
     let mut clear = move || {
         *sqlite.write() = message.to_string();
@@ -160,14 +202,29 @@ pub fn Playground(sql: Option<String>) -> Element {
         *ast_details.write() = "".to_string();
     };
 
+    let encode_query = move || -> String {
+        let mut e = GzEncoder::new(Vec::new(), Compression::best());
+        let _ = e.write_all(input_sql().as_bytes());
+        let compressed = e.finish().expect("Failed to gzip query");
+        URL_SAFE.encode(compressed.as_slice())
+    };
+
+    let url_with_fragment = move |fragment: &str| -> String {
+        let mut url = base_url.clone();
+        url.set_fragment(Some(&fragment));
+        url.to_string()
+    };
+
     let mut handle_query = move |sql: String| {
         if sql.is_empty() {
             *status.write() = "".to_string();
+            *encoded_query.write() = "".to_string();
             clear();
             return;
         };
 
         *input_sql.write() = sql.clone();
+        *encoded_query.write() = encode_query();
 
         let mut ast = match parse(sql.clone()) {
             Ok(res) => res,
@@ -178,16 +235,22 @@ pub fn Playground(sql: Option<String>) -> Element {
             }
         };
 
-        if ast.is_empty() {
-            *status.write() = format!("Empty AST");
-            clear();
-            return;
-        }
+        let ast = match ast.pop() {
+            Some(a) => a,
+            None => {
+                *status.write() = format!("Empty AST");
+                clear();
+                return;
+            }
+        };
 
-        let ast = ast.pop().unwrap();
-        *sqlite.write() = ast.to_sql(&SQLiteDialect {}).unwrap();
-        *postgresql.write() = ast.to_sql(&PostgreSqlDialect {}).unwrap();
-        *mysql.write() = ast.to_sql(&MySqlDialect {}).unwrap();
+        *sqlite.write() = ast
+            .to_sql(&SQLiteDialect {})
+            .expect("SQLite dialect failed.");
+        *postgresql.write() = ast
+            .to_sql(&PostgreSqlDialect {})
+            .expect("Postgres dialect failed.");
+        *mysql.write() = ast.to_sql(&MySqlDialect {}).expect("MySql dialect failed");
         *status.write() = "".to_string();
 
         let hidden_ast = match HiddenParser::parse_sql(&GenericDialect {}, &sql) {
@@ -200,19 +263,15 @@ pub fn Playground(sql: Option<String>) -> Element {
         );
     };
 
-    if let Some(s) = sql {
-        handle_query(s)
+    let mut parsed = use_signal(|| false);
+    if !*parsed.read() {
+        *parsed.write() = true;
+        if let Some(s) = &sql {
+            handle_query(s.to_string())
+        }
     }
 
-    let mut open = use_signal(|| false);
-
-    let encoded_sql = move || -> String {
-        let mut e = ZlibEncoder::new(Vec::new(), Compression::default());
-        e.write_all(input_sql().as_bytes());
-        // Handle
-        let compressed = e.finish().unwrap();
-        URL_SAFE.encode(compressed.as_slice())
-    };
+    let mut open_dialog = use_signal(|| false);
 
     rsx! {
         fieldset {
@@ -227,6 +286,7 @@ pub fn Playground(sql: Option<String>) -> Element {
                     class: "textarea w-full",
                     style: "padding-top: 34px",
                     placeholder: "Your SQL query",
+                    value: "{input_sql()}",
                     oninput: move |evt| {
                         let sql = evt.value().to_string();
                         handle_query(sql);
@@ -236,7 +296,7 @@ pub fn Playground(sql: Option<String>) -> Element {
                     class: "toolbar",
                     div {
                         class: "btn btn-xs btn-ghost btn-square",
-                        onclick: move |_| open.set(true),
+                        onclick: move |_| open_dialog.set(true),
                         svg {
                             view_box: "0 0 24 24",
                             width: "16",
@@ -251,25 +311,22 @@ pub fn Playground(sql: Option<String>) -> Element {
                             }
                         }
                     }
-                    if open() {
+                    if open_dialog() {
                         dialog {
                             open: true,
                             class: "modal",
-                            onclick: move |_| open.set(false),
+                            onclick: move |_| open_dialog.set(false),
                             div {
                                 class: "modal-box",
                                 onclick: |e| e.stop_propagation(),
-                                h3 { class: "text-lg font-bold", "Hello!" }
-                                p {
-                                    class: "py-4",
-                                    "{encoded_sql()}"
-                                }
+                                h3 { class: "text-lg", "Shared link" }
+                                SharedInfo {url: url_with_fragment(&encoded_query()) }
                                 form {
                                     method: "dialog",
                                     class: "modal-action",
                                     button {
                                         class: "btn",
-                                        onclick: move |_| open.set(false),
+                                        onclick: move |_| open_dialog.set(false),
                                         "Close"
                                     }
                                 }
@@ -278,7 +335,7 @@ pub fn Playground(sql: Option<String>) -> Element {
                                 method: "dialog",
                                 class: "modal-backdrop",
                                 button {
-                                    onclick: move |_| open.set(false),
+                                    onclick: move |_| open_dialog.set(false),
                                 }
                             }
                         }
@@ -358,6 +415,50 @@ pub fn Playground(sql: Option<String>) -> Element {
             div {
                 class: "font-sans border bg-base-100 border-base-300 rounded-sm px-3 py-2",
                 "{mysql}"
+            }
+        }
+    }
+}
+
+#[component]
+pub fn SharedInfo(url: String) -> Element {
+    let mut copied = use_signal(|| false);
+    rsx! {
+        div {
+            div {
+                class: "bg-green-50 p-4 border-t border-green-200",
+                div {
+                    class: "flex items-center gap-2 text-green-700 text-base font-medium mb-1",
+                    "Copy link below"
+                }
+
+                p {
+                    class: "text-sm text-gray-700 mb-3",
+                    "Anyone with the link can view this playground"
+                }
+
+                div {
+                    class: "flex items-center bg-white border border-gray-300 rounded-sm overflow-hidden text-sm",
+                    input {
+                        readonly: true,
+                        value: "{url}",
+                        class: "flex-1 px-3 py-2 text-gray-800 font-mono outline-none bg-white"
+                    }
+                    button {
+                        class: if copied() {
+                            "px-3 py-2 bg-gray-200 text-green-700 border-l border-gray-300 text-sm font-medium"
+                        } else {
+                            "px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 border-l border-gray-300 text-sm"
+                        },
+                        onclick: move |_| {
+                            copy_to_clipboard(&url);
+                            copied.set(true);
+                            // Reset the button
+                            Timeout::new(3000, move || copied.set(false)).forget();
+                        },
+                        if copied() { "Copied!" } else { "Copy" }
+                    }
+                }
             }
         }
     }
