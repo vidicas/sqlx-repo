@@ -12,3 +12,10 @@ sql-bridge = { path = "../sql-bridge" }
 dioxus-logger = "0.7"
 flate2 = "1"
 base64 = "0.22"
+url = "2.5"
+web-sys = { version = "0.3.77", features = [
+    "Navigator",
+    "Window",
+    "Clipboard",
+] }
+gloo-timers = "0.3"
