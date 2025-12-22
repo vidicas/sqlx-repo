@@ -88,12 +88,12 @@ fn rename_column() {
 fn add_column_if_not_exists() {
     let query = "ALTER TABLE table_name ADD COLUMN IF NOT EXISTS col INTEGER";
     let err = parse(query).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::AlterTable {
             reason: "if not exists"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported alter table: if not exists");
 }
 
@@ -101,12 +101,12 @@ fn add_column_if_not_exists() {
 fn drop_column_if_not_exists() {
     let query = "ALTER TABLE table_name DROP COLUMN IF EXISTS column_name";
     let err = parse(query).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::AlterTable {
             reason: "if exists"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported alter table: if exists");
 }
 
@@ -114,12 +114,12 @@ fn drop_column_if_not_exists() {
 fn drop_behaviour() {
     let query = "ALTER TABLE table_name DROP COLUMN column_name CASCADE";
     let err = parse(query).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::AlterTable {
             reason: "drop behaviour"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported alter table: drop behaviour");
 }
 
@@ -127,11 +127,11 @@ fn drop_behaviour() {
 fn column_position() {
     let query = "ALTER TABLE users ADD COLUMN age INT AFTER name";
     let err = parse(query).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::AlterTable {
             reason: "column position"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported alter table: column position");
 }

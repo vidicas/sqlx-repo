@@ -90,7 +90,7 @@ fn query_with_too_many_ident_compounds() {
     let res = parse(input);
     assert!(res.is_err());
     let err = res.unwrap_err();
-    assert_eq!(err, Error::CompoundIdentifier { length: 3 });
+    assert!(matches!(err, Error::CompoundIdentifier { length: 3 }));
     assert_eq!(
         err.to_string(),
         "unsupported compound identifier with length 3"
@@ -374,7 +374,7 @@ fn select_with_join_too_many_indent_compounds() {
     assert!(res.is_err());
 
     let err = res.unwrap_err();
-    assert_eq!(err, Error::CompoundIdentifier { length: 3 });
+    assert!(matches!(err, Error::CompoundIdentifier { length: 3 }));
     assert_eq!(
         err.to_string(),
         "unsupported compound identifier with length 3"

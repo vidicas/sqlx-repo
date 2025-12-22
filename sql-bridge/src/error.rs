@@ -11,16 +11,6 @@ use std::io;
 use std::string::FromUtf8Error;
 
 #[derive(Debug)]
-pub struct IoErrorWrap(io::Error);
-
-impl PartialEq for IoErrorWrap {
-    fn eq(&self, other: &Self) -> bool {
-        // FIXME: not sure if it's reasonable
-        self.0.kind() == other.0.kind() && self.0.to_string() == other.0.to_string()
-    }
-}
-
-#[derive(Debug, PartialEq)]
 pub enum Error {
     DataType {
         data_type: Box<DataType>,
@@ -184,7 +174,7 @@ pub enum Error {
     DropIndex,
     Statement,
     Serial,
-    Io(IoErrorWrap),
+    Io(io::Error),
     Parser(ParserError),
     Utf8(FromUtf8Error),
 }
@@ -408,7 +398,7 @@ impl std::fmt::Display for Error {
                 )
             }
             Error::Io(err) => {
-                write!(f, "IO error: {}", err.0)
+                write!(f, "IO error: {}", err)
             }
             Error::Parser(err) => {
                 write!(f, "Parser error: {err}")
@@ -422,7 +412,7 @@ impl std::fmt::Display for Error {
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Self {
-        Error::Io(IoErrorWrap(err))
+        Error::Io(err)
     }
 }
 
