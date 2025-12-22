@@ -23,8 +23,8 @@ fn drop_index() {
 #[test]
 fn drop_multiple_index() {
     let input = "DROP INDEX idx1, idx2";
-    let ast = parse(input);
-    assert!(ast.is_err());
+    let err = parse(input).unwrap_err();
+    assert!(matches!(err, Error::Drop { reason: "multiple names", object_type: None }), "{:?}", err);
 }
 
 #[test]
@@ -51,11 +51,11 @@ fn drop_multiple_table() {
     assert!(matches!(
         err,
         Error::Drop {
-            reason: "multiple tables",
+            reason: "multiple names",
             object_type: None
         }
     ));
-    assert_eq!(err.to_string(), "unsupported drop: multiple tables");
+    assert_eq!(err.to_string(), "unsupported drop: multiple names");
 }
 
 #[test]

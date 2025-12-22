@@ -1951,7 +1951,7 @@ impl Ast {
         let name = match names {
             [table_name] => Self::parse_object_name(table_name)?,
             _ => Err(Error::Drop {
-                reason: "multiple tables",
+                reason: "multiple names",
                 object_type: None,
             })?,
         };
