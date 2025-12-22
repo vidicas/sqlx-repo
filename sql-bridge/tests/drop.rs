@@ -48,12 +48,12 @@ fn drop_table() {
 fn drop_multiple_table() {
     let input = "DROP TABLE test1, test2";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Drop {
             reason: "multiple tables"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported drop: multiple tables");
 }
 

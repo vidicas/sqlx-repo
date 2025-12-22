@@ -67,7 +67,7 @@ fn basic_insert_with_placeholders_with_cast() {
 fn insert_with_or() {
     let input = "INSERT OR REPLACE INTO table_name (id, name) VALUES (1, 'Alice')";
     let err = parse(input).unwrap_err();
-    assert_eq!(err, Error::Insert { reason: "or" });
+    assert!(matches!(err, Error::Insert { reason: "or" }));
     assert_eq!(err.to_string(), "unsupported insert: or");
 }
 
@@ -75,7 +75,7 @@ fn insert_with_or() {
 fn insert_ignore() {
     let input = "INSERT IGNORE INTO table_name (id, name) VALUES (1, 'Alice')";
     let err = parse(input).unwrap_err();
-    assert_eq!(err, Error::Insert { reason: "ignore" });
+    assert!(matches!(err, Error::Insert { reason: "ignore" }));
     assert_eq!(err.to_string(), "unsupported insert: ignore");
 }
 
@@ -83,12 +83,12 @@ fn insert_ignore() {
 fn insert_without_into() {
     let input = "INSERT table_name (id, name) VALUES (1, 'Alice')";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "missing into"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: missing into");
 }
 
@@ -96,12 +96,12 @@ fn insert_without_into() {
 fn insert_overwrite() {
     let input = "INSERT OVERWRITE INTO table_name (id, name) VALUES (1, 'Alice')";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "overwrite"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: overwrite");
 }
 
@@ -109,12 +109,12 @@ fn insert_overwrite() {
 fn insert_partitioned() {
     let input = "INSERT INTO table_name PARTITION (partition_name) VALUES (col1_value, col2_value)";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "partitioned"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: partitioned");
 }
 
@@ -122,12 +122,12 @@ fn insert_partitioned() {
 fn insert_has_table_keyword() {
     let input = "INSERT INTO TABLE table_name VALUES (col1_value, col2_value)";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "table keyword"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: table keyword");
 }
 
@@ -136,12 +136,12 @@ fn insert_on_conflict() {
     let input =
         "INSERT INTO table_name VALUES (col1_value, col2_value) ON CONFLICT (id) DO NOTHING;";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "on keyword"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: on keyword");
 }
 
@@ -149,12 +149,12 @@ fn insert_on_conflict() {
 fn insert_returning() {
     let input = "INSERT INTO table_name VALUES (col1_value, col2_value) RETURNING id";
     let err = parse(input).unwrap_err();
-    assert_eq!(
+    assert!(matches!(
         err,
         Error::Insert {
             reason: "returning"
         }
-    );
+    ));
     assert_eq!(err.to_string(), "unsupported insert: returning");
 }
 
@@ -162,7 +162,7 @@ fn insert_returning() {
 fn insert_replace() {
     let input = "REPLACE INTO table_name VALUES (col1_value, col2_value)";
     let err = parse(input).unwrap_err();
-    assert_eq!(err, Error::Insert { reason: "replace" });
+    assert!(matches!(err, Error::Insert { reason: "replace" }));
     assert_eq!(err.to_string(), "unsupported insert: replace");
 }
 
@@ -170,6 +170,6 @@ fn insert_replace() {
 fn insert_priority() {
     let input = "INSERT HIGH_PRIORITY INTO table_name VALUES (col1_value, col2_value)";
     let err = parse(input).unwrap_err();
-    assert_eq!(err, Error::Insert { reason: "priority" });
+    assert!(matches!(err, Error::Insert { reason: "priority" }));
     assert_eq!(err.to_string(), "unsupported insert: priority");
 }
