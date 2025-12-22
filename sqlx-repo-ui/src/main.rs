@@ -132,8 +132,8 @@ pub fn Header() -> Element {
         div {
             class: "flex pb-4",
             div {
-                class: "text-3xl tracking-tighter font-semibold",
-                "Sqlx Repo Playground"
+                class: "flex text-3xl tracking-tighter font-semibold",
+                "SQLx Repo Playground"
             }
             div { class: "flex-grow" }
             a {
@@ -271,8 +271,6 @@ pub fn Playground(sql: Option<String>) -> Element {
         }
     }
 
-    let mut open_dialog = use_signal(|| false);
-
     rsx! {
         fieldset {
             class: "fieldset bg-base-200 border-base-300 border p-4",
@@ -294,52 +292,8 @@ pub fn Playground(sql: Option<String>) -> Element {
                 }
                 div {
                     class: "toolbar",
-                    div {
-                        class: "btn btn-xs btn-ghost btn-square",
-                        onclick: move |_| open_dialog.set(true),
-                        svg {
-                            view_box: "0 0 24 24",
-                            width: "16",
-                            height: "16",
-                            fill: "none",
-                            stroke: "#707070",
-                            path {
-                                d: "M8.68439 10.6578L15.3124 7.34378 M15.3156 16.6578L8.69379 13.3469 M21 6C21 7.65685 19.6569 9 18 9C16.3431 9 15 7.65685 15 6C15 4.34315 16.3431 3 18 3C19.6569 3 21 4.34315 21 6ZM9 12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12C3 10.3431 4.34315 9 6 9C7.65685 9 9 10.3431 9 12ZM21 18C21 19.6569 19.6569 21 18 21C16.3431 21 15 19.6569 15 18C15 16.3431 16.3431 15 18 15C19.6569 15 21 16.3431 21 18Z",
-                                stroke_width: "1.5",
-                                stroke_linecap: "round",
-                                stroke_linejoin: "round",
-                            }
-                        }
-                    }
-                    if open_dialog() {
-                        dialog {
-                            open: true,
-                            class: "modal",
-                            onclick: move |_| open_dialog.set(false),
-                            div {
-                                class: "modal-box",
-                                onclick: |e| e.stop_propagation(),
-                                h3 { class: "text-lg", "Shared link" }
-                                SharedInfo {url: url_with_fragment(&encoded_query()) }
-                                form {
-                                    method: "dialog",
-                                    class: "modal-action",
-                                    button {
-                                        class: "btn",
-                                        onclick: move |_| open_dialog.set(false),
-                                        "Close"
-                                    }
-                                }
-                            }
-                            form {
-                                method: "dialog",
-                                class: "modal-backdrop",
-                                button {
-                                    onclick: move |_| open_dialog.set(false),
-                                }
-                            }
-                        }
-                    }
+                    SharePlayground { url: url_with_fragment(&encoded_query()) }
+                    CopyToClipboard { text: input_sql() }
                 }
             }
             div {
@@ -375,6 +329,10 @@ pub fn Playground(sql: Option<String>) -> Element {
                     class: "font-semibold",
                     "SQLite"
                 }
+                div {
+                    class: "ml-auto",
+                    CopyToClipboard { text: sqlite() }
+                }
             }
             div {
                 class: "font-sans border bg-base-100 border-base-300 rounded-sm px-3 py-2",
@@ -392,6 +350,10 @@ pub fn Playground(sql: Option<String>) -> Element {
                 div {
                     class: "font-semibold",
                     "PostgreSQL"
+                }
+                div {
+                    class: "ml-auto",
+                    CopyToClipboard { text: postgresql() }
                 }
             }
             div {
@@ -411,10 +373,98 @@ pub fn Playground(sql: Option<String>) -> Element {
                     class: "font-semibold",
                     "MySQL"
                 }
+                div {
+                    class: "ml-auto",
+                    CopyToClipboard { text: mysql() }
+                }
             }
             div {
                 class: "font-sans border bg-base-100 border-base-300 rounded-sm px-3 py-2",
                 "{mysql}"
+            }
+        }
+    }
+}
+
+#[component]
+pub fn SharePlayground(url: String) -> Element {
+    let mut open_dialog = use_signal(|| false);
+    rsx! {
+        div {
+            class: "tooltip",
+            "data-tip": "Share Playground",
+            div {
+                class: "btn btn-xs btn-ghost btn-square",
+                onclick: move |_| open_dialog.set(true),
+                svg {
+                    view_box: "0 0 24 24",
+                    width: "16",
+                    height: "16",
+                    fill: "none",
+                    stroke: "#707070",
+                    path {
+                        d: "M8.68439 10.6578L15.3124 7.34378 M15.3156 16.6578L8.69379 13.3469 M21 6C21 7.65685 19.6569 9 18 9C16.3431 9 15 7.65685 15 6C15 4.34315 16.3431 3 18 3C19.6569 3 21 4.34315 21 6ZM9 12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12C3 10.3431 4.34315 9 6 9C7.65685 9 9 10.3431 9 12ZM21 18C21 19.6569 19.6569 21 18 21C16.3431 21 15 19.6569 15 18C15 16.3431 16.3431 15 18 15C19.6569 15 21 16.3431 21 18Z",
+                        stroke_width: "1.5",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                    }
+                }
+            }
+        }
+        if open_dialog() {
+            dialog {
+                open: true,
+                class: "modal",
+                onclick: move |_| open_dialog.set(false),
+                div {
+                    class: "modal-box",
+                    onclick: |e| e.stop_propagation(),
+                    h3 { class: "text-lg", "Shared link" }
+                    SharedInfo {url: url }
+                    form {
+                        method: "dialog",
+                        class: "modal-action",
+                        button {
+                            class: "btn",
+                            onclick: move |_| open_dialog.set(false),
+                            "Close"
+                        }
+                    }
+                }
+                form {
+                    method: "dialog",
+                    class: "modal-backdrop",
+                    button {
+                        onclick: move |_| open_dialog.set(false),
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn CopyToClipboard(text: String) -> Element {
+    rsx! {
+        div {
+            class: "tooltip",
+            "data-tip": "Copy to clipboard",
+            div {
+                class: "btn btn-xs btn-ghost btn-square",
+                onclick: move |_| copy_to_clipboard(&text),
+                svg {
+                    view_box: "0 0 24 24",
+                    width: "16",
+                    height: "16",
+                    fill: "#707070",
+                    stroke: "#707070",
+                    path {
+                        d: "M23 15H11.707l2.646 2.646-.707.707L9.793 14.5l3.854-3.854.707.707L11.707 14H23zm-13-5H6v1h4zm-4 5h2v-1H6zM3 4h3V3h3a2 2 0 0 1 4 0h3v1h3v9h-1V5h-2v2H6V5H4v16h14v-5h1v6H3zm4 2h8V4h-3V2.615A.615.615 0 0 0 11.386 2h-.771a.615.615 0 0 0-.615.615V4H7zM6 19h4v-1H6z",
+                        stroke_width: "0.5",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                    }
+                }
             }
         }
     }
