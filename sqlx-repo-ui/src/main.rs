@@ -8,7 +8,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 use flate2::Compression;
 use flate2::{read::GzDecoder, write::GzEncoder};
 use gloo_timers::callback::Timeout;
-use url::Url;
+use url::{Url, form_urlencoded::byte_serialize};
 
 use sql_bridge::__hidden::sqlparser::{dialect::GenericDialect, parser::Parser as HiddenParser};
 use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
@@ -294,6 +294,7 @@ pub fn Playground(sql: Option<String>) -> Element {
                     class: "toolbar",
                     SharePlayground { url: url_with_fragment(&encoded_query()) }
                     CopyToClipboard { text: input_sql() }
+                    OpenIssue { url: url_with_fragment(&encoded_query()) }
                 }
             }
             div {
@@ -461,6 +462,59 @@ pub fn CopyToClipboard(text: String) -> Element {
                     path {
                         d: "M23 15H11.707l2.646 2.646-.707.707L9.793 14.5l3.854-3.854.707.707L11.707 14H23zm-13-5H6v1h4zm-4 5h2v-1H6zM3 4h3V3h3a2 2 0 0 1 4 0h3v1h3v9h-1V5h-2v2H6V5H4v16h14v-5h1v6H3zm4 2h8V4h-3V2.615A.615.615 0 0 0 11.386 2h-.771a.615.615 0 0 0-.615.615V4H7zM6 19h4v-1H6z",
                         stroke_width: "0.5",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn OpenIssue(url: String) -> Element {
+    let description = format!(
+        r#"Describe what you observed in the playground: expected vs actual behavior.
+
+### Expectation
+
+I expected ... but got ...
+
+### Related Playground
+
+For more details follow the [link]({})
+"#,
+        url
+    );
+    let title: String = byte_serialize(b"Finding from the Playground").collect();
+    let body: String = byte_serialize(description.as_bytes()).collect();
+    let github_url = format!(
+        "https://github.com/vidicas/sqlx-repo/issues/new?title={}&body={}",
+        title, body
+    );
+    rsx! {
+        div {
+            class: "tooltip",
+            "data-tip": "Open Issue",
+            a {
+                class: "btn btn-xs btn-ghost btn-square",
+                href: "{github_url}",
+                rel: "nofollow noopener noreferrer",
+                svg {
+                    view_box: "0 0 24 24",
+                    width: "16",
+                    height: "16",
+                    fill: "none",
+                    stroke: "#707070",
+                    path {
+                        d: "M8 21H20.4C20.7314 21 21 20.7314 21 20.4V3.6C21 3.26863 20.7314 3 20.4 3H3.6C3.26863 3 3 3.26863 3 3.6V16",
+                        stroke_width: "1.5",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                    }
+                    path {
+                        d: "M3.5 20.5L12 12M12 12V16M12 12H8",
+                        stroke_width: "1.5",
                         stroke_linecap: "round",
                         stroke_linejoin: "round",
                     }
