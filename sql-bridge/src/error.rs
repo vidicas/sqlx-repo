@@ -95,11 +95,9 @@ pub enum Error {
     TableJoins {
         table_joins: Vec<TableWithJoins>,
     },
-    DropObjectType {
-        object_type: ObjectType,
-    },
     Drop {
         reason: &'static str,
+        object_type: Option<ObjectType>,
     },
     AlterTable {
         reason: &'static str,
@@ -171,7 +169,9 @@ pub enum Error {
     DeleteToSql {
         reason: &'static str,
     },
-    DropIndex,
+    DropIndex {
+        reason: &'static str,
+    },
     Statement,
     Serial,
     Io(io::Error),
@@ -286,12 +286,13 @@ impl std::fmt::Display for Error {
                     "select with multiple tables is not supported yet: {table_joins:?}"
                 )
             }
-            Error::DropObjectType { object_type } => {
-                write!(f, "unsupported drop of object type: {object_type:?}")
-            }
-            Error::Drop { reason } => {
-                write!(f, "unsupported drop: {reason}")
-            }
+            Error::Drop {
+                reason,
+                object_type,
+            } => match object_type {
+                None => write!(f, "unsupported drop: {reason}"),
+                Some(ot) => write!(f, "unsupported drop: {reason} {ot:?}"),
+            },
             Error::AlterTable { reason } => {
                 write!(f, "unsupported alter table: {reason}")
             }
@@ -385,8 +386,8 @@ impl std::fmt::Display for Error {
             Error::DeleteToSql { reason } => {
                 write!(f, "unsupported delete: {reason}")
             }
-            Error::DropIndex => {
-                write!(f, "`DROP INDEX` requires table name")
+            Error::DropIndex { reason } => {
+                write!(f, "unsupported drop index: {reason}")
             }
             Error::Statement => {
                 write!(f, "unsupported statement")

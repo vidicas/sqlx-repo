@@ -556,11 +556,14 @@ pub enum Ast {
         from_clause: FromClause,
         selection: Option<Selection>,
     },
-    Drop {
-        object_type: DropObjectType,
+    DropTable {
         if_exists: bool,
         name: String,
-        table: Option<String>,
+    },
+    DropIndex {
+        if_exists: bool,
+        name: String,
+        table: String,
     },
 }
 
@@ -795,12 +798,6 @@ pub enum Op {
     Eq,
     And,
     Or,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum DropObjectType {
-    Table,
-    Index,
 }
 
 impl TryFrom<&BinaryOperator> for Op {
@@ -1954,24 +1951,31 @@ impl Ast {
         names: &[ObjectName],
         table: Option<&ObjectName>,
     ) -> Result<Self> {
-        let (object_type, table) = match object_type {
-            ObjectType::Table => (DropObjectType::Table, None),
-            ObjectType::Index => (
-                DropObjectType::Index,
-                table.map(Self::parse_object_name).transpose()?,
-            ),
-            _ => Err(Error::DropObjectType {
-                object_type: *object_type,
-            })?,
-        };
         let name = match names {
             [table_name] => Self::parse_object_name(table_name)?,
             _ => Err(Error::Drop {
                 reason: "multiple tables",
+                object_type: None,
             })?,
         };
-        Ok(Ast::Drop {
-            object_type,
+        match object_type {
+            ObjectType::Table => Ok(Ast::DropTable { if_exists, name }),
+            ObjectType::Index => Self::parse_drop_index(if_exists, name, table),
+            _ => Err(Error::Drop {
+                reason: "object type",
+                object_type: Some(*object_type),
+            }),
+        }
+    }
+
+    fn parse_drop_index(if_exists: bool, name: String, table: Option<&ObjectName>) -> Result<Self> {
+        let table = match table.map(Self::parse_object_name) {
+            Some(name) => name?,
+            None => Err(Error::DropIndex {
+                reason: "table name required",
+            })?,
+        };
+        Ok(Ast::DropIndex {
             if_exists,
             name,
             table,
@@ -2466,34 +2470,36 @@ impl Ast {
         Ok(())
     }
 
-    fn drop_to_sql(
+    fn drop_table_to_sql(
         dialect: &dyn ToQuery,
         buf: &mut dyn Write,
-        object_type: DropObjectType,
         if_exists: bool,
         name: &str,
-        table: Option<&str>,
     ) -> Result<()> {
-        match object_type {
-            DropObjectType::Table => buf.write_all(b"DROP TABLE ")?,
-            DropObjectType::Index => buf.write_all(b"DROP INDEX ")?,
-        };
+        buf.write_all(b"DROP TABLE ")?;
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
         }
         Self::write_quoted(dialect, buf, name);
-        match (
-            object_type == DropObjectType::Index,
-            dialect.drop_index_requires_table(),
-            table,
-        ) {
-            (true, true, Some(table)) => {
-                buf.write_all(b" ON ")?;
-                Self::write_quoted(dialect, buf, table)?;
-            }
-            (true, _, None) => Err(Error::DropIndex)?,
-            _ => (),
-        };
+        Ok(())
+    }
+
+    fn drop_index_to_sql(
+        dialect: &dyn ToQuery,
+        buf: &mut dyn Write,
+        if_exists: bool,
+        name: &str,
+        table: &str,
+    ) -> Result<()> {
+        buf.write_all(b"DROP INDEX ")?;
+        if if_exists {
+            buf.write_all(b"IF EXISTS ")?;
+        }
+        Self::write_quoted(dialect, buf, name);
+        if dialect.drop_index_requires_table() {
+            buf.write_all(b" ON ")?;
+            Self::write_quoted(dialect, buf, table)?;
+        }
         Ok(())
     }
 
@@ -2614,19 +2620,14 @@ impl Ast {
                 from_clause,
                 selection,
             } => Self::delete_to_sql(dialect, buf, from_clause, selection.as_ref())?,
-            Ast::Drop {
-                object_type,
+            Ast::DropTable { if_exists, name } => {
+                Self::drop_table_to_sql(dialect, buf, *if_exists, name)?
+            }
+            Ast::DropIndex {
                 if_exists,
                 name,
                 table,
-            } => Self::drop_to_sql(
-                dialect,
-                buf,
-                *object_type,
-                *if_exists,
-                name,
-                table.as_ref().map(AsRef::as_ref),
-            )?,
+            } => Self::drop_index_to_sql(dialect, buf, *if_exists, name, table)?,
         };
         let buf = std::mem::replace(buf, Cursor::new(Vec::new()));
         Ok(String::from_utf8(buf.into_inner())?)

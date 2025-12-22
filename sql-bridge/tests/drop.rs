@@ -51,7 +51,8 @@ fn drop_multiple_table() {
     assert!(matches!(
         err,
         Error::Drop {
-            reason: "multiple tables"
+            reason: "multiple tables",
+            object_type: None
         }
     ));
     assert_eq!(err.to_string(), "unsupported drop: multiple tables");
@@ -101,4 +102,20 @@ fn drop_table_if_exists() {
         ast.to_sql(&SQLiteDialect {}).unwrap(),
         "DROP TABLE IF EXISTS `test`"
     );
+}
+
+#[test]
+fn drop_index_no_table_name() {
+    let input = "DROP INDEX foo_idx";
+    let err = parse(input).unwrap_err();
+    assert!(matches!(
+        err,
+        Error::DropIndex {
+            reason: "table name required",
+        }
+    ));
+    assert_eq!(
+        err.to_string(),
+        "unsupported drop index: table name required"
+    )
 }
