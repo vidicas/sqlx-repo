@@ -1,4 +1,5 @@
 use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sqlparser::ast::ObjectType;
 
 #[test]
 fn drop_index() {
@@ -24,7 +25,17 @@ fn drop_index() {
 fn drop_multiple_index() {
     let input = "DROP INDEX idx1, idx2";
     let err = parse(input).unwrap_err();
-    assert!(matches!(err, Error::Drop { reason: "multiple names", object_type: None }), "{:?}", err);
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "multiple names",
+                object_type: None
+            }
+        ),
+        "{:?}",
+        err
+    );
 }
 
 #[test]
@@ -118,4 +129,21 @@ fn drop_index_no_table_name() {
         err.to_string(),
         "unsupported drop index: table name required"
     )
+}
+
+#[test]
+fn drop_view() {
+    let input = "DROP VIEW foo_view";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "object type",
+                object_type: Some(ObjectType::View)
+            }
+        ),
+        "{err:?}",
+    );
+    assert_eq!(err.to_string(), "unsupported drop: object type View")
 }
