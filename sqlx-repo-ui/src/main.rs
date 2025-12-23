@@ -117,7 +117,7 @@ pub fn Home(route: Vec<String>) -> Element {
 pub fn Main(sql: Option<String>) -> Element {
     rsx! {
         div {
-            class: "flex w-full px-8 py-4",
+            class: "flex w-full px-8 py-4 text-base-content/80",
             div {
                 class: "w-full",
                 Header { }
@@ -151,13 +151,17 @@ pub fn Header() -> Element {
                 }
                 "latest"
             }
-            div {
+            a {
                 class: "pl-4",
-                a {
-                    href: "https://github.com/vidicas/sqlx-repo",
-                    img {
-                        class: "h-6 object-scale-down",
-                        src: local_asset!("github-mark.png"),
+                href: "https://github.com/vidicas/sqlx-repo",
+                rel: "nofollow noopener noreferrer",
+                svg {
+                    view_box: "0 0 20 20",
+                    width: "24",
+                    height: "24",
+                    fill: "black",
+                    path {
+                        d: "M10 0C4.477 0 0 4.59 0 10.253C0 14.782 2.862 18.624 6.833 19.981C7.34 20.082 7.52 19.762 7.52 19.489C7.52 19.151 7.508 18.047 7.508 16.675C7.508 15.719 7.828 15.095 8.187 14.777C5.96 14.523 3.62 13.656 3.62 9.718C3.62 8.598 4.008 7.684 4.65 6.966C4.546 6.707 4.203 5.664 4.748 4.252C4.748 4.252 5.586 3.977 7.495 5.303C8.294 5.076 9.15 4.962 10 4.958C10.85 4.962 11.705 5.076 12.503 5.303C14.414 3.977 15.254 4.252 15.254 4.252C15.797 5.664 15.454 6.707 15.351 6.966C15.99 7.684 16.381 8.598 16.381 9.718C16.381 13.646 14.046 14.526 11.825 14.785C12.111 15.041 12.37 15.493 12.46 16.156C13.03 16.418 14.478 16.871 15.37 15.304C15.37 15.304 15.899 14.319 16.903 14.247C16.903 14.247 17.878 14.234 16.971 14.87C16.971 14.87 16.316 15.185 15.861 16.37C15.861 16.37 15.274 18.2 12.492 17.58C12.487 18.437 12.478 19.245 12.478 19.489C12.478 19.76 12.662 20.077 13.161 19.982C17.135 18.627 20 14.783 20 10.253C20 4.59 15.522 0 10 0Z",
                     }
                 }
             }
@@ -169,7 +173,7 @@ pub fn Header() -> Element {
 pub fn Body(sql: Option<String>) -> Element {
     rsx! {
         div {
-            class: "flex h-full text-gray-600 space-x-4",
+            class: "flex h-full space-x-4",
             div {
                 class: "flex-1/2 space-y-4 tracking-tighter",
                 Playground { sql },
@@ -216,6 +220,8 @@ pub fn Playground(sql: Option<String>) -> Element {
     };
 
     let mut handle_query = move |sql: String| {
+        *input_sql.write() = sql.clone();
+
         if sql.is_empty() {
             *status.write() = "".to_string();
             *encoded_query.write() = "".to_string();
@@ -223,7 +229,6 @@ pub fn Playground(sql: Option<String>) -> Element {
             return;
         };
 
-        *input_sql.write() = sql.clone();
         *encoded_query.write() = encode_query();
 
         let mut ast = match parse(sql.clone()) {
@@ -273,7 +278,7 @@ pub fn Playground(sql: Option<String>) -> Element {
 
     rsx! {
         fieldset {
-            class: "fieldset bg-base-200 border-base-300 border p-4",
+            class: "fieldset bg-base-200 border-base-300 border rounded-sm p-4",
             div {
                 class: "text-base",
                 "Insert your query below to check it against SQLite, PostgreSQL and MySQL"
@@ -298,7 +303,7 @@ pub fn Playground(sql: Option<String>) -> Element {
                 }
             }
             div {
-                class: "whitespace-pre-wrap break-words break-all label text-sm text-red-800",
+                class: "whitespace-pre-wrap break-words break-all label text-sm text-warning",
                 {status}
             }
             if !ast_details().is_empty() {
@@ -319,7 +324,7 @@ pub fn Playground(sql: Option<String>) -> Element {
             }
         }
         div {
-            class: "bg-base-200 border border-base-300 p-4 space-y-2",
+            class: "bg-base-200 border border-base-300 rounded-sm p-4 space-y-2",
             div {
                 class: "flex space-x-2",
                 img {
@@ -341,7 +346,7 @@ pub fn Playground(sql: Option<String>) -> Element {
             }
         }
         div {
-            class: "bg-base-200 border border-base-300 p-4 space-y-2",
+            class: "bg-base-200 border border-base-300 rounded-sm p-4 space-y-2",
             div {
                 class: "flex space-x-2",
                 img {
@@ -363,7 +368,7 @@ pub fn Playground(sql: Option<String>) -> Element {
             }
         }
         div {
-            class: "bg-base-200 border border-base-300 p-4 space-y-2",
+            class: "bg-base-200 border border-base-300 rounded-sm p-4 space-y-2",
             div {
                 class: "flex space-x-2",
                 img {
@@ -402,7 +407,7 @@ pub fn SharePlayground(url: String) -> Element {
                     width: "16",
                     height: "16",
                     fill: "none",
-                    stroke: "#707070",
+                    stroke: "currentColor",
                     path {
                         d: "M8.68439 10.6578L15.3124 7.34378 M15.3156 16.6578L8.69379 13.3469 M21 6C21 7.65685 19.6569 9 18 9C16.3431 9 15 7.65685 15 6C15 4.34315 16.3431 3 18 3C19.6569 3 21 4.34315 21 6ZM9 12C9 13.6569 7.65685 15 6 15C4.34315 15 3 13.6569 3 12C3 10.3431 4.34315 9 6 9C7.65685 9 9 10.3431 9 12ZM21 18C21 19.6569 19.6569 21 18 21C16.3431 21 15 19.6569 15 18C15 16.3431 16.3431 15 18 15C19.6569 15 21 16.3431 21 18Z",
                         stroke_width: "1.5",
@@ -457,8 +462,8 @@ pub fn CopyToClipboard(text: String) -> Element {
                     view_box: "0 0 24 24",
                     width: "16",
                     height: "16",
-                    fill: "#707070",
-                    stroke: "#707070",
+                    fill: "currentColor",
+                    stroke: "currentColor",
                     path {
                         d: "M23 15H11.707l2.646 2.646-.707.707L9.793 14.5l3.854-3.854.707.707L11.707 14H23zm-13-5H6v1h4zm-4 5h2v-1H6zM3 4h3V3h3a2 2 0 0 1 4 0h3v1h3v9h-1V5h-2v2H6V5H4v16h14v-5h1v6H3zm4 2h8V4h-3V2.615A.615.615 0 0 0 11.386 2h-.771a.615.615 0 0 0-.615.615V4H7zM6 19h4v-1H6z",
                         stroke_width: "0.5",
@@ -505,7 +510,7 @@ For more details follow the [link]({})
                     width: "16",
                     height: "16",
                     fill: "none",
-                    stroke: "#707070",
+                    stroke: "currentColor",
                     path {
                         d: "M8 21H20.4C20.7314 21 21 20.7314 21 20.4V3.6C21 3.26863 20.7314 3 20.4 3H3.6C3.26863 3 3 3.26863 3 3.6V16",
                         stroke_width: "1.5",
@@ -530,29 +535,23 @@ pub fn SharedInfo(url: String) -> Element {
     rsx! {
         div {
             div {
-                class: "bg-green-50 p-4 border-t border-green-200",
-                div {
-                    class: "flex items-center gap-2 text-green-700 text-base font-medium mb-1",
-                    "Copy link below"
-                }
-
+                class: "bg-base-200 p-4",
                 p {
-                    class: "text-sm text-gray-700 mb-3",
+                    class: "text-sm mb-3",
                     "Anyone with the link can view this playground"
                 }
-
                 div {
-                    class: "flex items-center bg-white border border-gray-300 rounded-sm overflow-hidden text-sm",
+                    class: "flex items-center bg-neutral-content border border-neutral-content rounded-sm overflow-hidden text-sm",
                     input {
                         readonly: true,
                         value: "{url}",
-                        class: "flex-1 px-3 py-2 text-gray-800 font-mono outline-none bg-white"
+                        class: "flex-1 px-3 py-2 font-mono outline-none bg-base-100"
                     }
                     button {
                         class: if copied() {
-                            "px-3 py-2 bg-gray-200 text-green-700 border-l border-gray-300 text-sm font-medium"
+                            "px-3 py-2 bg-base-100 border-l border-neutral-content text-sm"
                         } else {
-                            "px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 border-l border-gray-300 text-sm"
+                            "px-3 py-2 bg-base-100 hover:bg-base-300 border-l border-neutral-content text-sm"
                         },
                         onclick: move |_| {
                             copy_to_clipboard(&url);

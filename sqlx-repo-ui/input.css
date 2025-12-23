@@ -2,7 +2,23 @@
 @source "./src/**/*.{rs,html,css}";
 
 @plugin "@tailwindcss/typography";
-@plugin "daisyui";
+
+@plugin "daisyui" {
+    themes: light --default, halloween --prefersdark;
+}
+
+@plugin "daisyui/theme" {
+    name: "halloween";
+    prefersdark: true;
+    --color-base-100: #2A2A2A;
+    --color-base-200: #353535;
+}
+
+@plugin "daisyui/theme" {
+    name: "light";
+    default: true;
+    --color-warning: #C41103;
+}
 
 fieldset {
     @apply outline-none;
@@ -18,4 +34,16 @@ fieldset {
     left: 8px;
     display: flex;
     gap: 8px,
+}
+
+html {
+    color-scheme: light dark;
+}
+
+html[data-theme="light"] {
+    color-scheme: light;
+}
+
+html[data-theme="halloween"] {
+    color-scheme: dark;
 }
