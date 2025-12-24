@@ -1149,6 +1149,9 @@
   .bg-base-200 {
     background-color: var(--color-base-200);
   }
+  .bg-base-300 {
+    background-color: var(--color-base-300);
+  }
   .bg-neutral-content {
     background-color: var(--color-neutral-content);
   }
