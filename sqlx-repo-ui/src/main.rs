@@ -191,13 +191,13 @@ pub fn Playground(sql: Option<String>) -> Element {
     let message = "Waiting for SQL ...";
     let base_url = base_url();
 
-    let mut input_sql = use_signal(|| String::new());
+    let mut input_sql = use_signal(String::new);
     let mut sqlite = use_signal(|| String::from(message));
     let mut postgresql = use_signal(|| String::from(message));
     let mut mysql = use_signal(|| String::from(message));
-    let mut ast_details = use_signal(|| String::new());
-    let mut status = use_signal(|| String::new());
-    let mut encoded_query = use_signal(|| String::new());
+    let mut ast_details = use_signal(String::new);
+    let mut status = use_signal(String::new);
+    let mut encoded_query = use_signal(String::new);
 
     let mut clear = move || {
         *sqlite.write() = message.to_string();
@@ -215,7 +215,7 @@ pub fn Playground(sql: Option<String>) -> Element {
 
     let url_with_fragment = move |fragment: &str| -> String {
         let mut url = base_url.clone();
-        url.set_fragment(Some(&fragment));
+        url.set_fragment(Some(fragment));
         url.to_string()
     };
 
@@ -243,7 +243,7 @@ pub fn Playground(sql: Option<String>) -> Element {
         let ast = match ast.pop() {
             Some(a) => a,
             None => {
-                *status.write() = format!("Empty AST");
+                *status.write() = "Empty AST".to_string();
                 clear();
                 return;
             }
