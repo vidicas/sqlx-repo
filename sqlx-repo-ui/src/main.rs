@@ -83,34 +83,26 @@ fn App() -> Element {
 #[component]
 pub fn Home(route: Vec<String>) -> Element {
     let url = location();
-    if let Some(fragment) = url.fragment() {
-        let decoded_fragment = match URL_SAFE.decode(fragment.as_bytes()) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Failed to decode a fragment {fragment}, {e}");
-                return rsx! {
-                    Main { }
-                };
-            }
-        };
+    let sql = url
+        .fragment()
+        .map(|fragment| -> Result<_, String> {
+            let decoded = URL_SAFE
+                .decode(fragment.as_bytes())
+                .map_err(|e| format!("Failed to decode a fragment {fragment}, {e}"))?;
 
-        let mut decoder = GzDecoder::new(decoded_fragment.as_slice());
-        let mut ungzipped = String::new();
-        if let Err(e) = decoder.read_to_string(&mut ungzipped) {
-            error!("Failed to ungzip a fragment {fragment}, {e}");
-            return rsx! {
-                Main { }
-            };
-        };
+            let mut decoder = GzDecoder::new(decoded.as_slice());
+            let mut ungzipped = String::new();
+            decoder
+                .read_to_string(&mut ungzipped)
+                .map_err(|e| format!("Failed to ungzip a fragment {fragment}, {e}"))?;
 
-        rsx! {
-            Main { sql: Some(ungzipped) }
-        }
-    } else {
-        rsx! {
-            Main { }
-        }
-    }
+            Ok(ungzipped)
+        })
+        .transpose()
+        .map_err(|e| error!("{e}"))
+        .unwrap_or(None);
+
+    rsx! { Main { sql } }
 }
 
 #[component]
