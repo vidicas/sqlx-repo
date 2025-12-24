@@ -1,7 +1,8 @@
 use sqlparser::ast::{
-    AlterTableOperation, BinaryOperator, ColumnOption, DataType, Expr, FunctionArg,
-    FunctionArguments, IndexColumn, JoinConstraint, JoinOperator, ObjectType, ReferentialAction,
-    SelectItem, SetExpr, Statement, TableConstraint, TableFactor, TableWithJoins, Value,
+    AlterTableOperation, AssignmentTarget, BinaryOperator, ColumnOption, DataType, Expr,
+    FunctionArg, FunctionArguments, IndexColumn, JoinConstraint, JoinOperator, ObjectType,
+    ReferentialAction, SelectItem, SetExpr, Statement, TableConstraint, TableFactor,
+    TableWithJoins, Value,
 };
 
 use crate::ast::Selection;
@@ -160,8 +161,12 @@ pub enum Error {
     Update {
         reason: &'static str,
     },
-    UpdateTableType,
-    UpdateAssignmentTarget,
+    UpdateTableType {
+        table_factor: Box<TableFactor>,
+    },
+    UpdateAssignmentTarget {
+        target: Box<AssignmentTarget>,
+    },
     Delete {
         reason: &'static str,
     },
@@ -374,11 +379,11 @@ impl std::fmt::Display for Error {
             Error::Update { reason } => {
                 write!(f, "unsupported update: {reason}")
             }
-            Error::UpdateTableType => {
-                write!(f, "unsupported table type")
+            Error::UpdateTableType { table_factor } => {
+                write!(f, "unsupported table type: {table_factor:?}")
             }
-            Error::UpdateAssignmentTarget => {
-                write!(f, "unsupported assignment target")
+            Error::UpdateAssignmentTarget { target } => {
+                write!(f, "unsupported assignment target: {target:?}")
             }
             Error::Delete { reason } => {
                 write!(f, "unsupported delete: {reason}")

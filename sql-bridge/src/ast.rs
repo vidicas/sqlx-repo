@@ -1874,14 +1874,18 @@ impl Ast {
         }
         let table = match &table.relation {
             TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
-            _ => Err(Error::UpdateTableType)?,
+            table_factor => Err(Error::UpdateTableType {
+                table_factor: Box::new(table_factor.clone()),
+            })?,
         };
         let assignments = assignments
             .iter()
             .map(|assigment| {
                 let target = match &assigment.target {
                     AssignmentTarget::ColumnName(name) => Self::parse_object_name(name)?,
-                    target => Err(Error::UpdateAssignmentTarget)?,
+                    target => Err(Error::UpdateAssignmentTarget {
+                        target: Box::new(target.clone()),
+                    })?,
                 };
                 let value = (&assigment.value).try_into()?;
                 Ok(UpdateAssignment { target, value })
