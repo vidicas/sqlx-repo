@@ -293,6 +293,9 @@ pub fn Playground(sql: Option<String>) -> Element {
                     oninput: move |evt| {
                         let sql = evt.value().to_string();
                         handle_query(sql);
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.location().set_hash(&encoded_query());
+                        };
                     }
                 }
                 div {
@@ -549,7 +552,7 @@ pub fn SharedInfo(url: String) -> Element {
                     }
                     button {
                         class: if copied() {
-                            "px-3 py-2 bg-base-100 border-l border-neutral-content text-sm"
+                            "px-3 py-2 bg-base-300 border-l border-neutral-content text-sm"
                         } else {
                             "px-3 py-2 bg-base-100 hover:bg-base-300 border-l border-neutral-content text-sm"
                         },
