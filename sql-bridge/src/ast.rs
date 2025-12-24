@@ -2033,7 +2033,9 @@ impl Ast {
                         limit.as_ref(),
                     )?,
                     Statement::Delete(delete) => Self::parse_delete(delete)?,
-                    _ => Err(Error::Statement)?,
+                    _ => Err(Error::Statement {
+                        statement: Box::new(statement.clone()),
+                    })?,
                 };
                 Ok(result)
             })

@@ -1,7 +1,7 @@
 use sqlparser::ast::{
     AlterTableOperation, BinaryOperator, ColumnOption, DataType, Expr, FunctionArg,
     FunctionArguments, IndexColumn, JoinConstraint, JoinOperator, ObjectType, ReferentialAction,
-    SelectItem, SetExpr, TableConstraint, TableFactor, TableWithJoins, Value,
+    SelectItem, SetExpr, Statement, TableConstraint, TableFactor, TableWithJoins, Value,
 };
 
 use crate::ast::Selection;
@@ -171,7 +171,9 @@ pub enum Error {
     DropIndex {
         reason: &'static str,
     },
-    Statement,
+    Statement {
+        statement: Box<Statement>,
+    },
     Serial,
     Io(io::Error),
     Parser(ParserError),
@@ -387,8 +389,8 @@ impl std::fmt::Display for Error {
             Error::DropIndex { reason } => {
                 write!(f, "unsupported drop index: {reason}")
             }
-            Error::Statement => {
-                write!(f, "unsupported statement")
+            Error::Statement { statement } => {
+                write!(f, "unsupported statement: {statement:?}")
             }
             Error::Serial => {
                 write!(
