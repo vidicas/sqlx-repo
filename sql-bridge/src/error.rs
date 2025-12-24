@@ -39,9 +39,8 @@ pub enum Error {
     SelectionValue {
         value: Box<Value>,
     },
-    Selection {
+    SelectionInList {
         selection: Box<Selection>,
-        r#where: Option<&'static str>,
     },
     SelectionFromExpr {
         expr: Box<Expr>,
@@ -216,10 +215,9 @@ impl std::fmt::Display for Error {
             Error::SelectionValue { value } => {
                 write!(f, "unsupporetd selection value: {value:?} ")
             }
-            Error::Selection { selection, r#where } => match r#where {
-                None => write!(f, "unsupporetd selection: {selection:?} "),
-                Some(w) => write!(f, "unsupported selection in {w}: {selection:?}"),
-            },
+            Error::SelectionInList { selection } => {
+                write!(f, "unsupporetd in list selection: {selection:?} ")
+            }
             Error::SelectionFromExpr { expr } => {
                 write!(f, "unsupported selection expr: {expr:?}")
             }
