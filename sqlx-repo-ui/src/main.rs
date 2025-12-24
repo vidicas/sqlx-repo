@@ -454,24 +454,50 @@ pub fn SharePlayground(url: String) -> Element {
 
 #[component]
 pub fn CopyToClipboard(text: String) -> Element {
+    let mut copied = use_signal(|| false);
     rsx! {
         div {
             class: "tooltip",
-            "data-tip": "Copy to clipboard",
-            div {
-                class: "btn btn-xs btn-ghost btn-square",
-                onclick: move |_| copy_to_clipboard(&text),
-                svg {
-                    view_box: "0 0 24 24",
-                    width: "16",
-                    height: "16",
-                    fill: "currentColor",
-                    stroke: "currentColor",
-                    path {
-                        d: "M23 15H11.707l2.646 2.646-.707.707L9.793 14.5l3.854-3.854.707.707L11.707 14H23zm-13-5H6v1h4zm-4 5h2v-1H6zM3 4h3V3h3a2 2 0 0 1 4 0h3v1h3v9h-1V5h-2v2H6V5H4v16h14v-5h1v6H3zm4 2h8V4h-3V2.615A.615.615 0 0 0 11.386 2h-.771a.615.615 0 0 0-.615.615V4H7zM6 19h4v-1H6z",
-                        stroke_width: "0.5",
-                        stroke_linecap: "round",
-                        stroke_linejoin: "round",
+            "data-tip": "Copy",
+            if copied() {
+                div {
+                    class: "btn btn-xs btn-ghost btn-square",
+                    svg {
+                        view_box: "0 0 24 24",
+                        width: "16",
+                        height: "16",
+                        fill: "currentColor",
+                        stroke: "currentColor",
+                        path {
+                            d: "M19.7071 6.29289C20.0976 6.68342 20.0976 7.31658 19.7071 7.70711L10.4142 17C9.63316 17.7811 8.36683 17.781 7.58579 17L3.29289 12.7071C2.90237 12.3166 2.90237 11.6834 3.29289 11.2929C3.68342 10.9024 4.31658 10.9024 4.70711 11.2929L9 15.5858L18.2929 6.29289C18.6834 5.90237 19.3166 5.90237 19.7071 6.29289Z",
+                            stroke_width: "0.5",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                        }
+                    }
+                }
+            }
+            else {
+                div {
+                    class: "btn btn-xs btn-ghost btn-square",
+                    onclick: move |_| {
+                        copy_to_clipboard(&text);
+                        copied.set(true);
+                        // Reset the button
+                        Timeout::new(1000, move || copied.set(false)).forget();
+                    },
+                    svg {
+                        view_box: "0 0 24 24",
+                        width: "16",
+                        height: "16",
+                        fill: "currentColor",
+                        stroke: "currentColor",
+                        path {
+                            d: "M23 15H11.707l2.646 2.646-.707.707L9.793 14.5l3.854-3.854.707.707L11.707 14H23zm-13-5H6v1h4zm-4 5h2v-1H6zM3 4h3V3h3a2 2 0 0 1 4 0h3v1h3v9h-1V5h-2v2H6V5H4v16h14v-5h1v6H3zm4 2h8V4h-3V2.615A.615.615 0 0 0 11.386 2h-.771a.615.615 0 0 0-.615.615V4H7zM6 19h4v-1H6z",
+                            stroke_width: "0.5",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                        }
                     }
                 }
             }
@@ -534,14 +560,20 @@ For more details follow the [link]({})
 
 #[component]
 pub fn SharedInfo(url: String) -> Element {
-    let mut copied = use_signal(|| false);
     rsx! {
         div {
             div {
                 class: "bg-base-200 p-4",
-                p {
-                    class: "text-sm mb-3",
-                    "Anyone with the link can view this playground"
+                div {
+                    class: "flex",
+                    p {
+                        class: "text-sm mb-3",
+                        "Anyone with the link can view this playground"
+                    }
+                    div {
+                        class: "ml-auto",
+                        CopyToClipboard { text: &url }
+                    }
                 }
                 div {
                     class: "flex items-center bg-neutral-content border border-neutral-content rounded-sm overflow-hidden text-sm",
@@ -549,20 +581,6 @@ pub fn SharedInfo(url: String) -> Element {
                         readonly: true,
                         value: "{url}",
                         class: "flex-1 px-3 py-2 font-mono outline-none bg-base-100"
-                    }
-                    button {
-                        class: if copied() {
-                            "px-3 py-2 bg-base-300 border-l border-neutral-content text-sm"
-                        } else {
-                            "px-3 py-2 bg-base-100 hover:bg-base-300 border-l border-neutral-content text-sm"
-                        },
-                        onclick: move |_| {
-                            copy_to_clipboard(&url);
-                            copied.set(true);
-                            // Reset the button
-                            Timeout::new(3000, move || copied.set(false)).forget();
-                        },
-                        if copied() { "Copied!" } else { "Copy" }
                     }
                 }
             }
