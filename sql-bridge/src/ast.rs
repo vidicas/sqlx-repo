@@ -655,9 +655,8 @@ impl TryFrom<&Expr> for Selection {
             } => {
                 let ident = match expr.as_ref().try_into()? {
                     Selection::Ident(ident) => ident,
-                    selection => Err(Error::Selection {
+                    selection => Err(Error::SelectionInList {
                         selection: Box::new(selection.clone()),
-                        r#where: None,
                     })?,
                 };
                 let list = list
@@ -667,9 +666,8 @@ impl TryFrom<&Expr> for Selection {
                             ok @ Selection::String(_) => ok,
                             ok @ Selection::Number(_) => ok,
                             ok @ Selection::Placeholder => ok,
-                            selection => Err(Error::Selection {
+                            selection => Err(Error::SelectionInList {
                                 selection: Box::new(selection.clone()),
-                                r#where: Some("InList"),
                             })?,
                         };
                         Ok(ok)
