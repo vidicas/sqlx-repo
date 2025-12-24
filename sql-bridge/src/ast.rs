@@ -482,7 +482,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         }
                         if characteristics.is_some() {
                             Err(Error::ForeignKey {
-                                reason: "charecteristics",
+                                reason: "characteristics",
                             })?
                         }
                         let on_delete = match on_delete {
