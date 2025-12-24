@@ -113,12 +113,12 @@ pub fn Body() -> Element {
 }
 
 pub fn Playground() -> Element {
-    let mut input_sql = use_signal(|| String::new());
+    let mut input_sql = use_signal(String::new);
     let message = "Waiting for SQL...";
     let mut sqlite = use_signal(|| String::from(message));
     let mut postgresql = use_signal(|| String::from(message));
     let mut mysql = use_signal(|| String::from(message));
-    let mut ast_details = use_signal(|| String::new());
+    let mut ast_details = use_signal(String::new);
 
     let mut clear = move || {
         *sqlite.write() = message.to_string();
@@ -127,7 +127,7 @@ pub fn Playground() -> Element {
         *ast_details.write() = "".to_string();
     };
 
-    let mut status = use_signal(|| String::new());
+    let mut status = use_signal(String::new);
     rsx! {
         fieldset {
             class: "fieldset bg-base-200 border-base-300 border p-4",
@@ -158,7 +158,7 @@ pub fn Playground() -> Element {
                     };
 
                     if ast.is_empty() {
-                        *status.write() = format!("Empty AST");
+                        *status.write() = "Empty AST".to_string();
                         clear();
                         return
                     }

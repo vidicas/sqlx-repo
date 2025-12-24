@@ -134,6 +134,7 @@ pub enum Error {
         set_expr: Box<SetExpr>,
     },
     Top,
+    EmptyProjections,
     Count {
         reason: &'static str,
         args: Vec<crate::ast::FunctionArg>,
@@ -348,6 +349,9 @@ impl std::fmt::Display for Error {
             }
             Error::Top => {
                 write!(f, "top is not supported")
+            }
+            Error::EmptyProjections => {
+                write!(f, "empty projections are not supported")
             }
             Error::Count { reason, args } => {
                 write!(f, "unsupported count: {reason}, args: {args:?}")

@@ -384,6 +384,7 @@ fn select_with_join_too_many_indent_compounds() {
 #[test]
 fn select_empty_projection() {
     let input = "select from foo";
-    let res = parse(input);
-    assert!(res.is_err());
+    let err = parse(input).unwrap_err();
+    assert!(matches!(err, Error::EmptyProjections));
+    assert_eq!(err.to_string(), "empty projections are not supported");
 }

@@ -1583,10 +1583,10 @@ impl Ast {
             })?,
         };
         if select.top.is_some() || select.top_before_distinct {
-            return Err(Error::Top)?;
+            Err(Error::Top)?;
         }
         if select.projection.is_empty() {
-            return Err("empty projections are not supported")?;
+            Err(Error::EmptyProjections)?;
         }
         let projections = select
             .projection
