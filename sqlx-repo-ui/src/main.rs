@@ -29,7 +29,9 @@ macro_rules! local_asset {
 }
 
 pub fn copy_to_clipboard(text: &str) {
-    let navigator = if let Some(window) = web_sys::window() { window.navigator() } else {
+    let navigator = if let Some(window) = web_sys::window() {
+        window.navigator()
+    } else {
         error!("window object is not accessible");
         return;
     };
@@ -248,9 +250,7 @@ pub fn Playground(sql: Option<String>) -> Element {
             Ok(a) => format!("{a:?}"),
             Err(_) => "Failed".to_string(),
         };
-        *ast_details.write() = format!(
-            "Sqlx Repo AST: {ast:?} \n\nSql Parser AST: {hidden_ast}"
-        );
+        *ast_details.write() = format!("Sqlx Repo AST: {ast:?} \n\nSql Parser AST: {hidden_ast}");
     };
 
     let mut parsed = use_signal(|| false);
@@ -506,9 +506,8 @@ For more details follow the [link]({url})
     );
     let title: String = byte_serialize(b"Finding from the Playground").collect();
     let body: String = byte_serialize(description.as_bytes()).collect();
-    let github_url = format!(
-        "https://github.com/vidicas/sqlx-repo/issues/new?title={title}&body={body}"
-    );
+    let github_url =
+        format!("https://github.com/vidicas/sqlx-repo/issues/new?title={title}&body={body}");
     rsx! {
         div {
             class: "tooltip",

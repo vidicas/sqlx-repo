@@ -362,7 +362,9 @@ impl<D: sqlx::Database + std::fmt::Debug> std::fmt::Debug for DatabaseRepository
 
 fn hide_credentials(url: &str) -> Result<String> {
     let mut url = url::Url::parse(url)?;
-    if url.scheme() == "sqlite" { Ok(url.to_string()) } else {
+    if url.scheme() == "sqlite" {
+        Ok(url.to_string())
+    } else {
         url.set_username("").or(Err("failed to hide username"))?;
         url.set_password(None).or(Err("failed to hide password"))?;
         Ok(url.to_string())

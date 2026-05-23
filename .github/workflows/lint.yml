@@ -35,6 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: EmbarkStudios/cargo-deny-action@34899fc7ba81ca0da3e8c6a10bf85a5a32b0a6ee  # v2
+      - uses: EmbarkStudios/cargo-deny-action@7343aaf3a9563e7c5e0e8bac3896a292217cb163  # v2.0.19
         with:
           command: check

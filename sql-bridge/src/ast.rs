@@ -1863,9 +1863,7 @@ impl Ast {
                 .rows
                 .iter()
                 .map(|row| -> Result<Vec<InsertSource>> {
-                    row.iter()
-                        .map(TryInto::try_into)
-                        .collect::<Result<_>>()
+                    row.iter().map(TryInto::try_into).collect::<Result<_>>()
                 })
                 .collect::<Result<_>>()?,
             other => Err(Error::InsertSource {
@@ -1922,17 +1920,17 @@ impl Ast {
                     sqlparser::ast::AssignmentTarget::ColumnName(name) => {
                         Self::parse_object_name(name)?
                     }
-                    target @ sqlparser::ast::AssignmentTarget::Tuple(_) => Err(Error::UpdateAssignmentTarget {
-                        target: Box::new(target.clone()),
-                    })?,
+                    target @ sqlparser::ast::AssignmentTarget::Tuple(_) => {
+                        Err(Error::UpdateAssignmentTarget {
+                            target: Box::new(target.clone()),
+                        })?
+                    }
                 };
                 let value = (&assigment.value).try_into()?;
                 Ok(UpdateAssignment { target, value })
             })
             .collect::<Result<Vec<UpdateAssignment>>>()?;
-        let selection: Option<Selection> = selection
-            .map(TryInto::try_into)
-            .transpose()?;
+        let selection: Option<Selection> = selection.map(TryInto::try_into).transpose()?;
         Ok(Ast::Update {
             table,
             assignments,
@@ -2624,7 +2622,14 @@ impl Ast {
                 columns,
                 constraints,
             } => {
-                Self::create_table_to_sql(dialect, buf, *if_not_exists, name, columns, constraints)?;
+                Self::create_table_to_sql(
+                    dialect,
+                    buf,
+                    *if_not_exists,
+                    name,
+                    columns,
+                    constraints,
+                )?;
             }
             Ast::AlterTable { name, operation } => {
                 Self::alter_table_to_sql(dialect, buf, name.as_str(), operation)?;

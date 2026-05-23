@@ -207,12 +207,11 @@ impl Expander {
 
     fn visit_type(&mut self, pos: &mut usize, ty: &mut syn::Type, acc: &mut Vec<syn::Lifetime>) {
         match ty {
-            syn::Type::Reference(rf)
-                if rf.lifetime.is_none() => {
-                    let lifetime = Self::get_lifetime(pos);
-                    rf.lifetime = Some(lifetime.clone());
-                    acc.push(lifetime);
-                }
+            syn::Type::Reference(rf) if rf.lifetime.is_none() => {
+                let lifetime = Self::get_lifetime(pos);
+                rf.lifetime = Some(lifetime.clone());
+                acc.push(lifetime);
+            }
             syn::Type::Path(path) => self.visit_path(pos, &mut path.path, acc),
             syn::Type::Tuple(tuple) => {
                 for ty in &mut tuple.elems {
