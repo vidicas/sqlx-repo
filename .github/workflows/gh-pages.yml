@@ -39,9 +39,8 @@ jobs:
       - name: Build Project
         shell: bash
         run: |
-          export PATH="$CARGO_HOME/bin:$PATH"
           cd sqlx-repo-ui/
-          ASSET_PREFIX="sqlx-repo" dx build --release
+          ASSET_PREFIX="sqlx-repo" "$CARGO_HOME/bin/dx" build --release
           cd ../target/dx/sqlx-repo-ui/release/web/public
           sed -i 's#/assets/#/sqlx-repo/assets/#g' index.html
           sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/sqlx-repo-ui-*.js
@@ -52,3 +51,16 @@ jobs:
         with:
           branch: gh-pages
           folder: target/dx/sqlx-repo-ui/release/web/public
+
+      - name: dump stats on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo "=== Contents of current directory ==="
+          ls -la
+          echo "=== Contents of sqlx-repo-ui/ ==="
+          ls -la sqlx-repo-ui/ || echo "sqlx-repo-ui/ not found"
+          echo "=== Contents of target/ ==="
+          ls -la target/ || echo "target/ not found"
