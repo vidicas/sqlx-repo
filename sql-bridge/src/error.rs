@@ -184,6 +184,7 @@ pub enum Error {
     Io(io::Error),
     Parser(ParserError),
     Utf8(FromUtf8Error),
+    DistinctOn,
 }
 
 impl std::fmt::Display for Error {
@@ -415,6 +416,7 @@ impl std::fmt::Display for Error {
             Error::Utf8(err) => {
                 write!(f, "UTF-8 error: {err}")
             }
+            Error::DistinctOn => write!(f, "distinct on is not supported"),
         }
     }
 }

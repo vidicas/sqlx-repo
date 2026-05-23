@@ -1601,6 +1601,12 @@ impl Ast {
         if select.projection.is_empty() {
             Err(Error::EmptyProjections)?;
         }
+        let distinct = match select.distinct {
+            Some(sqlparser::ast::Distinct::All) | None => false,
+            Some(sqlparser::ast::Distinct::Distinct) => true,
+            // Postgres feature
+            Some(sqlparser::ast::Distinct::On(_)) => Err(Error::DistinctOn)?,
+        };
         let projections = select
             .projection
             .iter()
@@ -1735,7 +1741,7 @@ impl Ast {
             None => vec![],
         };
         let ast = Ast::Select {
-            distinct: select.distinct.is_some(),
+            distinct,
             projections,
             from_clause,
             selection,
