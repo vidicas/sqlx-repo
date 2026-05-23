@@ -127,7 +127,9 @@ pub enum Error {
     },
     CTE,
     Fetch,
-    Limit,
+    Limit {
+        reason: &'static str,
+    },
     Locks,
     For,
     Select {
@@ -335,8 +337,8 @@ impl std::fmt::Display for Error {
             Error::Fetch => {
                 write!(f, "Fetch is not supported")
             }
-            Error::Limit => {
-                write!(f, "limit is not supported")
+            Error::Limit { reason } => {
+                write!(f, "unsupported limit: {reason}")
             }
             Error::Locks => {
                 write!(f, "locks are not supported")

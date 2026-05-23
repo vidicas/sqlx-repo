@@ -200,6 +200,26 @@ fn test_query_with_order_by() {
 }
 
 #[test]
+fn test_query_with_compound_order_by() {
+    let input = "select t.id from t join s on t.id = s.id order by t.id asc";
+    let mut ast = parse(input).unwrap();
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT `t`.`id` FROM `t` JOIN `s` ON `t`.`id` = `s`.`id` ORDER BY `t`.`id` ASC"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT `t`.`id` FROM `t` JOIN `s` ON `t`.`id` = `s`.`id` ORDER BY `t`.`id` ASC"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT \"t\".\"id\" FROM \"t\" JOIN \"s\" ON \"t\".\"id\" = \"s\".\"id\" ORDER BY \"t\".\"id\" ASC"
+    );
+}
+
+#[test]
 fn select_literal_constant_number() {
     let input = "select 1";
     let mut ast = parse(input).unwrap();
@@ -399,5 +419,85 @@ fn select_all_projection() {
     assert_eq!(
         ast.to_sql(&PostgreSqlDialect {}).unwrap(),
         "SELECT \"col\" FROM \"foo\""
+    );
+}
+
+#[test]
+fn select_with_limit() {
+    let input = "SELECT * FROM foo LIMIT 10";
+    let mut ast = parse(input).unwrap();
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"foo\" LIMIT 10"
+    );
+}
+
+#[test]
+fn select_with_limit_and_offset() {
+    let input = "SELECT * FROM foo LIMIT 10 OFFSET 20";
+    let mut ast = parse(input).unwrap();
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10 OFFSET 20"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10 OFFSET 20"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"foo\" LIMIT 10 OFFSET 20"
+    );
+}
+
+#[test]
+fn select_with_mysql_offset_comma_limit() {
+    let input = "SELECT * FROM foo LIMIT 20, 10";
+    let mut ast = parse(input).unwrap();
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10 OFFSET 20"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT * FROM `foo` LIMIT 10 OFFSET 20"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT * FROM \"foo\" LIMIT 10 OFFSET 20"
+    );
+}
+
+#[test]
+fn select_with_order_by_and_limit() {
+    let input = "SELECT id FROM foo ORDER BY id DESC LIMIT 5";
+    let mut ast = parse(input).unwrap();
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT `id` FROM `foo` ORDER BY `id` DESC LIMIT 5"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT `id` FROM `foo` ORDER BY `id` DESC LIMIT 5"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT \"id\" FROM \"foo\" ORDER BY \"id\" DESC LIMIT 5"
     );
 }

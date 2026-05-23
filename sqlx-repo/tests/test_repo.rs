@@ -1,17 +1,12 @@
 use anyhow::Result;
 use sqlx_repo::prelude::*;
 
-fn migration1() -> Migration {
-    migration!(
-        "first migration",
-        "create table test(id int primary key autoincrement)"
-    )
-}
+mod migrations;
 
 #[repo(Send + Sync + std::fmt::Debug)]
 impl Repo for DatabaseRepository {
     async fn migrate(&self) -> Result<()> {
-        let migrator = migrator!(&[migration1()]).await?;
+        let migrator = migrator!(&migrations::all_migrations()).await?;
         migrator.run(&self.pool).await?;
         Ok(())
     }
