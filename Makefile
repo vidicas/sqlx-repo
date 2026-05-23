@@ -1,3 +1,9 @@
+.PHONY: all
+all:
+
+.PHONY: check
+check: fmt fix lint
+
 .PHONY: fmt
 fmt:
 	cargo fmt --all
