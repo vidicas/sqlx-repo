@@ -1369,9 +1369,7 @@ impl Ast {
         }
         // BigQuery "CREATE SNAPSHOT TABLE"
         if *snapshot {
-            Err(Error::CreateTable {
-                reason: "snapshot",
-            })?;
+            Err(Error::CreateTable { reason: "snapshot" })?;
         }
         // Postgres "PARTITION OF"
         if partition_of.is_some() {
@@ -1399,15 +1397,11 @@ impl Ast {
         }
         // Redshift distribution key
         if distkey.is_some() {
-            Err(Error::CreateTable {
-                reason: "distkey",
-            })?;
+            Err(Error::CreateTable { reason: "distkey" })?;
         }
         // Redshift sort key
         if sortkey.is_some() {
-            Err(Error::CreateTable {
-                reason: "sortkey",
-            })?;
+            Err(Error::CreateTable { reason: "sortkey" })?;
         }
         // Redshift "BACKUP YES/NO"
         if backup.is_some() {
@@ -1972,9 +1966,7 @@ impl Ast {
             })?;
         }
         if !order_by.is_empty() {
-            Err(Error::Update {
-                reason: "order by",
-            })?;
+            Err(Error::Update { reason: "order by" })?;
         }
         if from.is_some() {
             Err(Error::Update {
