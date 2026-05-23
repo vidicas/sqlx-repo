@@ -1922,7 +1922,7 @@ impl Ast {
                     sqlparser::ast::AssignmentTarget::ColumnName(name) => {
                         Self::parse_object_name(name)?
                     }
-                    target => Err(Error::UpdateAssignmentTarget {
+                    target @ sqlparser::ast::AssignmentTarget::Tuple(_) => Err(Error::UpdateAssignmentTarget {
                         target: Box::new(target.clone()),
                     })?,
                 };
@@ -1987,7 +1987,7 @@ impl Ast {
     }
 
     fn parse_drop(
-        object_type: &sqlparser::ast::ObjectType,
+        object_type: sqlparser::ast::ObjectType,
         if_exists: bool,
         names: &[sqlparser::ast::ObjectName],
         table: Option<&sqlparser::ast::ObjectName>,
@@ -2004,7 +2004,7 @@ impl Ast {
             sqlparser::ast::ObjectType::Index => Self::parse_drop_index(if_exists, name, table),
             _ => Err(Error::Drop {
                 reason: "object type",
-                object_type: Some(*object_type),
+                object_type: Some(object_type),
             }),
         }
     }
@@ -2066,7 +2066,7 @@ impl Ast {
                         purge,
                         temporary,
                         table,
-                    } => Self::parse_drop(object_type, *if_exists, names, table.as_ref())?,
+                    } => Self::parse_drop(*object_type, *if_exists, names, table.as_ref())?,
                     sqlparser::ast::Statement::Insert(insert) => Self::parse_insert(insert)?,
                     sqlparser::ast::Statement::Update(sqlparser::ast::Update {
                         update_token,
