@@ -345,10 +345,6 @@ fn select_with_inner_join() {
         inner join baz on foo.id = baz.id
     ";
 
-    let res = parse(input);
-    if let Err(e) = res {
-        println!("{e}");
-    }
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
@@ -387,4 +383,25 @@ fn select_empty_projection() {
     let err = parse(input).unwrap_err();
     assert!(matches!(err, Error::EmptyProjections));
     assert_eq!(err.to_string(), "empty projections are not supported");
+}
+
+#[test]
+fn select_all_projection() {
+    let input = "select all col from foo";
+    let mut ast = parse(input).unwrap();
+    assert!(ast.len() == 1);
+    let ast = ast.pop().unwrap();
+
+    assert_eq!(
+        ast.to_sql(&MySqlDialect {}).unwrap(),
+        "SELECT `col` FROM `foo`"
+    );
+    assert_eq!(
+        ast.to_sql(&SQLiteDialect {}).unwrap(),
+        "SELECT `col` FROM `foo`"
+    );
+    assert_eq!(
+        ast.to_sql(&PostgreSqlDialect {}).unwrap(),
+        "SELECT \"col\" FROM \"foo\""
+    );
 }
