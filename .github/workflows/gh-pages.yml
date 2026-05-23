@@ -22,18 +22,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
         with:
           toolchain: stable
-          profile: minimal
-          target: wasm32-unknown-unknown
-          override: true
-      - uses: Swatinem/rust-cache@v2
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
 
       - name: Install Dioxus-CLI
         shell: bash
-        run: cargo install dioxus-cli
+        run: cargo install dioxus-cli --version 0.7.9
 
       - name: Build Project
         shell: bash
@@ -46,7 +44,7 @@ jobs:
           cp ./index.html ./404.html
 
       - name: Deploy Project
-        uses: JamesIves/github-pages-deploy-action@v4
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f  # v4
         with:
           branch: gh-pages
           folder: target/dx/sqlx-repo-ui/release/web/public

@@ -2,6 +2,8 @@ name: tests
 
 on: push
 
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -34,8 +36,10 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: stable
       - name: test
         run: cargo test --all-features
       
