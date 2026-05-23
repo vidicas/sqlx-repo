@@ -10,15 +10,6 @@ use std::{
 };
 
 use sqlparser::{
-    ast::{
-        Assignment, AssignmentTarget, BinaryOperator, CastKind, CharacterLength, ColumnDef,
-        ColumnOptionDef, CreateIndex, CreateTable as SqlParserCreateTable, CreateTableOptions,
-        Delete, ExactNumberInfo, Expr, FromTable, FunctionArguments, HiveDistributionStyle,
-        HiveFormat, Ident, IndexColumn, JoinConstraint, ObjectName, ObjectNamePart, ObjectType,
-        OrderByExpr, Query, ReferentialAction, SelectItem, SetExpr, SqliteOnConflict, Statement,
-        Table, TableConstraint, TableFactor, TableWithJoins, UpdateTableFromKind, Value,
-        ValueWithSpan,
-    },
     dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
     parser::Parser,
@@ -66,31 +57,28 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
             sqlparser::ast::DataType::Bool => DataType::Bool,
             sqlparser::ast::DataType::Boolean => DataType::Bool,
             sqlparser::ast::DataType::Text => DataType::String,
-            sqlparser::ast::DataType::Char(Some(CharacterLength::IntegerLength {
-                length, ..
-            })) => DataType::Char(*length),
-            sqlparser::ast::DataType::Varchar(Some(CharacterLength::IntegerLength {
-                length,
-                ..
-            })) => DataType::VarChar(*length),
+            sqlparser::ast::DataType::Char(Some(
+                sqlparser::ast::CharacterLength::IntegerLength { length, .. },
+            )) => DataType::Char(*length),
+            sqlparser::ast::DataType::Varchar(Some(
+                sqlparser::ast::CharacterLength::IntegerLength { length, .. },
+            )) => DataType::VarChar(*length),
             sqlparser::ast::DataType::Bytea => DataType::Bytes,
             sqlparser::ast::DataType::JSON => DataType::Json,
             sqlparser::ast::DataType::Uuid => DataType::Uuid,
-            sqlparser::ast::DataType::Decimal(ExactNumberInfo::PrecisionAndScale(
-                precision,
-                scale,
-            )) => DataType::Decimal {
+            sqlparser::ast::DataType::Decimal(
+                sqlparser::ast::ExactNumberInfo::PrecisionAndScale(precision, scale),
+            ) => DataType::Decimal {
                 precision: *precision,
                 scale: *scale,
             },
-            sqlparser::ast::DataType::Numeric(ExactNumberInfo::PrecisionAndScale(
-                precision,
-                scale,
-            )) => DataType::Decimal {
+            sqlparser::ast::DataType::Numeric(
+                sqlparser::ast::ExactNumberInfo::PrecisionAndScale(precision, scale),
+            ) => DataType::Decimal {
                 precision: *precision,
                 scale: *scale,
             },
-            sqlparser::ast::DataType::Custom(ObjectName(name_parts), _) => {
+            sqlparser::ast::DataType::Custom(sqlparser::ast::ObjectName(name_parts), _) => {
                 match extract_serial(name_parts) {
                     Some(dt) => dt,
                     None => Err(Error::DataType {
@@ -110,11 +98,11 @@ impl TryFrom<&sqlparser::ast::DataType> for DataType {
     }
 }
 
-fn extract_serial(name_parts: &[ObjectNamePart]) -> Option<DataType> {
+fn extract_serial(name_parts: &[sqlparser::ast::ObjectNamePart]) -> Option<DataType> {
     let name = match name_parts.first() {
         None => return None,
-        Some(ObjectNamePart::Function(_)) => return None,
-        Some(ObjectNamePart::Identifier(name)) => name,
+        Some(sqlparser::ast::ObjectNamePart::Function(_)) => return None,
+        Some(sqlparser::ast::ObjectNamePart::Identifier(name)) => name,
     };
     let name = name.value.to_ascii_lowercase();
     match name.as_str() {
@@ -132,11 +120,11 @@ pub struct Column {
     pub options: ColumnOptions,
 }
 
-impl TryFrom<&ColumnDef> for Column {
+impl TryFrom<&sqlparser::ast::ColumnDef> for Column {
     type Error = Error;
 
-    fn try_from(value: &ColumnDef) -> std::result::Result<Self, Self::Error> {
-        let ColumnDef {
+    fn try_from(value: &sqlparser::ast::ColumnDef) -> std::result::Result<Self, Self::Error> {
+        let sqlparser::ast::ColumnDef {
             name,
             data_type,
             options,
@@ -273,17 +261,15 @@ impl std::fmt::Display for ColumnOptions {
     }
 }
 
-impl TryFrom<&[ColumnOptionDef]> for ColumnOptions {
+impl TryFrom<&[sqlparser::ast::ColumnOptionDef]> for ColumnOptions {
     type Error = Error;
 
-    fn try_from(values: &[ColumnOptionDef]) -> Result<Self, Self::Error> {
+    fn try_from(values: &[sqlparser::ast::ColumnOptionDef]) -> Result<Self, Self::Error> {
         values.iter().try_fold(
             ColumnOptions::new(),
             |mut options, value| -> Result<_, Error> {
                 let options = match &value.option {
-                    sqlparser::ast::ColumnOption::Unique { is_primary, .. } if *is_primary => {
-                        options.set_primary_key()
-                    }
+                    sqlparser::ast::ColumnOption::PrimaryKey(_) => options.set_primary_key(),
                     sqlparser::ast::ColumnOption::NotNull => options.set_not_null(),
                     sqlparser::ast::ColumnOption::Null => options.set_nullable(),
                     option if is_auto_increment_option(option) => options.set_auto_increment(),
@@ -330,14 +316,14 @@ pub enum OnDeleteAction {
     Restrict,
 }
 
-impl TryFrom<&ReferentialAction> for OnDeleteAction {
+impl TryFrom<&sqlparser::ast::ReferentialAction> for OnDeleteAction {
     type Error = Error;
 
-    fn try_from(value: &ReferentialAction) -> Result<Self, Self::Error> {
+    fn try_from(value: &sqlparser::ast::ReferentialAction) -> Result<Self, Self::Error> {
         match value {
-            ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
-            ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
-            ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
+            sqlparser::ast::ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
+            sqlparser::ast::ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
+            sqlparser::ast::ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
             other => Err(Error::OnDeleteConstrait {
                 referential_action: *other,
             })?,
@@ -385,22 +371,24 @@ impl<'a> IntoIterator for &'a Constraints {
     }
 }
 
-impl TryFrom<&[TableConstraint]> for Constraints {
+impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
     type Error = Error;
 
-    fn try_from(value: &[TableConstraint]) -> Result<Self, Self::Error> {
+    fn try_from(value: &[sqlparser::ast::TableConstraint]) -> Result<Self, Self::Error> {
         let constraints = value
             .iter()
             .map(|constraint| -> Result<_> {
                 let res = match constraint {
-                    TableConstraint::PrimaryKey {
-                        columns,
-                        name,
-                        index_name,
-                        index_type,
-                        index_options,
-                        characteristics,
-                    } => {
+                    sqlparser::ast::TableConstraint::PrimaryKey(
+                        sqlparser::ast::PrimaryKeyConstraint {
+                            columns,
+                            name,
+                            index_name,
+                            index_type,
+                            index_options,
+                            characteristics,
+                        },
+                    ) => {
                         if name.is_some() {
                             Err(Error::PrimaryKey { reason: "name" })?
                         }
@@ -427,7 +415,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                         let columns = columns
                             .iter()
                             .map(
-                                |IndexColumn {
+                                |sqlparser::ast::IndexColumn {
                                      column,
                                      operator_class,
                                  }| {
@@ -436,7 +424,7 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                             reason: "operator class",
                                         })?
                                     };
-                                    let OrderByExpr {
+                                    let sqlparser::ast::OrderByExpr {
                                         expr,
                                         options,
                                         with_fill,
@@ -450,7 +438,9 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                         Err(Error::PrimaryKey { reason: "options" })?
                                     }
                                     match expr {
-                                        Expr::Identifier(ident) => Ok(ident.value.clone()),
+                                        sqlparser::ast::Expr::Identifier(ident) => {
+                                            Ok(ident.value.clone())
+                                        }
                                         _ => Err(Error::PrimaryKeyWithExpression {
                                             expr: Box::new(expr.clone()),
                                         })?,
@@ -460,16 +450,19 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                             .collect::<Result<Vec<_>>>()?;
                         Constraint::PrimaryKey(columns)
                     }
-                    TableConstraint::ForeignKey {
-                        name,
-                        columns,
-                        foreign_table,
-                        referred_columns,
-                        on_delete,
-                        on_update,
-                        characteristics,
-                        index_name,
-                    } => {
+                    sqlparser::ast::TableConstraint::ForeignKey(
+                        sqlparser::ast::ForeignKeyConstraint {
+                            name,
+                            index_name,
+                            columns,
+                            foreign_table,
+                            referred_columns,
+                            on_delete,
+                            on_update,
+                            match_kind,
+                            characteristics,
+                        },
+                    ) => {
                         if name.is_some() {
                             Err(Error::ForeignKey {
                                 reason: "constraint",
@@ -485,17 +478,22 @@ impl TryFrom<&[TableConstraint]> for Constraints {
                                 reason: "characteristics",
                             })?
                         }
+                        if match_kind.is_some() {
+                            Err(Error::ForeignKey {
+                                reason: "match kind",
+                            })?
+                        }
                         let on_delete = match on_delete {
                             None => None,
                             Some(action) => Some(action.try_into()?),
                         };
                         let columns = columns
                             .iter()
-                            .map(|Ident { value, .. }| value.clone())
+                            .map(|sqlparser::ast::Ident { value, .. }| value.clone())
                             .collect();
                         let referred_columns = referred_columns
                             .iter()
-                            .map(|Ident { value, .. }| value.clone())
+                            .map(|sqlparser::ast::Ident { value, .. }| value.clone())
                             .collect();
                         let foreign_table = Ast::parse_object_name(foreign_table)?;
                         Constraint::ForeignKey {
@@ -613,12 +611,12 @@ pub enum Selection {
     },
 }
 
-impl TryFrom<&Expr> for Selection {
+impl TryFrom<&sqlparser::ast::Expr> for Selection {
     type Error = Error;
 
-    fn try_from(expr: &Expr) -> std::result::Result<Self, Self::Error> {
+    fn try_from(expr: &sqlparser::ast::Expr) -> std::result::Result<Self, Self::Error> {
         let selection = match expr {
-            Expr::BinaryOp { left, op, right } => Selection::BinaryOp {
+            sqlparser::ast::Expr::BinaryOp { left, op, right } => Selection::BinaryOp {
                 op: op.try_into()?,
                 left: {
                     let left: Selection = left.as_ref().try_into()?;
@@ -629,8 +627,8 @@ impl TryFrom<&Expr> for Selection {
                     Box::new(right)
                 },
             },
-            Expr::Identifier(id) => Selection::Ident(id.value.clone()),
-            Expr::CompoundIdentifier(ids) => {
+            sqlparser::ast::Expr::Identifier(id) => Selection::Ident(id.value.clone()),
+            sqlparser::ast::Expr::CompoundIdentifier(ids) => {
                 // SQLite only supports table.column, not schema.table.column or database.table.column
                 if ids.len() != 2 {
                     Err(Error::CompoundIdentifier { length: ids.len() })?
@@ -640,15 +638,17 @@ impl TryFrom<&Expr> for Selection {
                     column: ids[1].value.clone(),
                 })
             }
-            Expr::Value(value) => match &value.value {
-                Value::Number(number, _) => Selection::Number(number.clone()),
-                Value::SingleQuotedString(string) => Selection::String(string.clone()),
-                Value::Placeholder(_) => Selection::Placeholder,
+            sqlparser::ast::Expr::Value(value) => match &value.value {
+                sqlparser::ast::Value::Number(number, _) => Selection::Number(number.clone()),
+                sqlparser::ast::Value::SingleQuotedString(string) => {
+                    Selection::String(string.clone())
+                }
+                sqlparser::ast::Value::Placeholder(_) => Selection::Placeholder,
                 _ => Err(Error::SelectionValue {
                     value: Box::new(value.value.clone()),
                 })?,
             },
-            Expr::InList {
+            sqlparser::ast::Expr::InList {
                 expr,
                 list,
                 negated,
@@ -717,35 +717,40 @@ pub enum InsertSource {
     },
 }
 
-impl TryFrom<&Expr> for InsertSource {
+impl TryFrom<&sqlparser::ast::Expr> for InsertSource {
     type Error = Error;
 
-    fn try_from(value: &Expr) -> Result<Self, Self::Error> {
+    fn try_from(value: &sqlparser::ast::Expr) -> Result<Self, Self::Error> {
         let value = match value {
-            Expr::Value(value) => &value.value,
-            Expr::Cast {
+            sqlparser::ast::Expr::Value(value) => &value.value,
+            sqlparser::ast::Expr::Cast {
                 kind,
                 expr,
                 data_type,
                 format,
-            } if *kind == CastKind::DoubleColon && format.is_none() => match expr.as_ref() {
-                Expr::Value(_) => {
-                    return Ok(InsertSource::Cast {
-                        cast: data_type.to_string(),
-                        source: Box::new(expr.as_ref().try_into()?),
-                    });
+                array,
+            } if *kind == sqlparser::ast::CastKind::DoubleColon && format.is_none() => {
+                match expr.as_ref() {
+                    sqlparser::ast::Expr::Value(_) => {
+                        return Ok(InsertSource::Cast {
+                            cast: data_type.to_string(),
+                            source: Box::new(expr.as_ref().try_into()?),
+                        });
+                    }
+                    _ => Err(Error::InsertSourceExpression { expr: expr.clone() })?,
                 }
-                _ => Err(Error::InsertSourceExpression { expr: expr.clone() })?,
-            },
+            }
             value => Err(Error::InsertSourceExpression {
                 expr: Box::new(value.clone()),
             })?,
         };
         let insert_source = match value {
-            Value::Null => InsertSource::Null,
-            Value::Number(number, _) => InsertSource::Number(number.clone()),
-            Value::SingleQuotedString(string) => InsertSource::String(string.clone()),
-            Value::Placeholder(_) => InsertSource::Placeholder,
+            sqlparser::ast::Value::Null => InsertSource::Null,
+            sqlparser::ast::Value::Number(number, _) => InsertSource::Number(number.clone()),
+            sqlparser::ast::Value::SingleQuotedString(string) => {
+                InsertSource::String(string.clone())
+            }
+            sqlparser::ast::Value::Placeholder(_) => InsertSource::Placeholder,
             value => Err(Error::InsertSourceValue {
                 value: Box::new(value.clone()),
             })?,
@@ -768,21 +773,23 @@ pub enum UpdateValue {
     Placeholder,
 }
 
-impl TryFrom<&Expr> for UpdateValue {
+impl TryFrom<&sqlparser::ast::Expr> for UpdateValue {
     type Error = Error;
 
-    fn try_from(expr: &Expr) -> Result<Self, Self::Error> {
+    fn try_from(expr: &sqlparser::ast::Expr) -> Result<Self, Self::Error> {
         let value = match expr {
-            Expr::Value(value) => &value.value,
+            sqlparser::ast::Expr::Value(value) => &value.value,
             expr => Err(Error::UpdateExpression {
                 expr: Box::new(expr.clone()),
             })?,
         };
         let update_value = match value {
-            Value::Null => UpdateValue::Null,
-            Value::Number(number, _) => UpdateValue::Number(number.clone()),
-            Value::SingleQuotedString(string) => UpdateValue::String(string.clone()),
-            Value::Placeholder(_) => UpdateValue::Placeholder,
+            sqlparser::ast::Value::Null => UpdateValue::Null,
+            sqlparser::ast::Value::Number(number, _) => UpdateValue::Number(number.clone()),
+            sqlparser::ast::Value::SingleQuotedString(string) => {
+                UpdateValue::String(string.clone())
+            }
+            sqlparser::ast::Value::Placeholder(_) => UpdateValue::Placeholder,
             value => Err(Error::UpdateValue {
                 value: Box::new(value.clone()),
             })?,
@@ -798,14 +805,14 @@ pub enum Op {
     Or,
 }
 
-impl TryFrom<&BinaryOperator> for Op {
+impl TryFrom<&sqlparser::ast::BinaryOperator> for Op {
     type Error = Error;
 
-    fn try_from(op: &BinaryOperator) -> std::result::Result<Self, Self::Error> {
+    fn try_from(op: &sqlparser::ast::BinaryOperator) -> std::result::Result<Self, Self::Error> {
         let op = match op {
-            BinaryOperator::And => Op::And,
-            BinaryOperator::Eq => Op::Eq,
-            BinaryOperator::Or => Op::Or,
+            sqlparser::ast::BinaryOperator::And => Op::And,
+            sqlparser::ast::BinaryOperator::Eq => Op::Eq,
+            sqlparser::ast::BinaryOperator::Or => Op::Or,
             _ => Err(Error::BinaryOperator { op: op.clone() })?,
         };
         Ok(op)
@@ -850,13 +857,13 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
         let name = table_relation_to_object_name(&table.relation)?;
         let operator = match &table.join_operator {
             sqlparser::ast::JoinOperator::Join(constraint) => match constraint {
-                JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
+                sqlparser::ast::JoinConstraint::On(expr) => JoinOperator::Join(expr.try_into()?),
                 other => Err(Error::JoinConstraint {
                     constraint: Box::new(other.clone()),
                 })?,
             },
             sqlparser::ast::JoinOperator::Inner(constraint) => match constraint {
-                JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
+                sqlparser::ast::JoinConstraint::On(expr) => JoinOperator::Inner(expr.try_into()?),
                 other => Err(Error::JoinConstraint {
                     constraint: Box::new(other.clone()),
                 })?,
@@ -870,9 +877,9 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
     }
 }
 
-fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
+fn table_relation_to_object_name(relation: &sqlparser::ast::TableFactor) -> Result<String> {
     match relation {
-        TableFactor::Table {
+        sqlparser::ast::TableFactor::Table {
             name,
             alias,
             args,
@@ -919,13 +926,13 @@ fn table_relation_to_object_name(relation: &TableFactor) -> Result<String> {
     }
 }
 
-impl TryFrom<&[TableWithJoins]> for FromClause {
+impl TryFrom<&[sqlparser::ast::TableWithJoins]> for FromClause {
     type Error = Error;
 
-    fn try_from(tables: &[TableWithJoins]) -> Result<Self, Self::Error> {
+    fn try_from(tables: &[sqlparser::ast::TableWithJoins]) -> Result<Self, Self::Error> {
         let from = match tables {
             &[
-                TableWithJoins {
+                sqlparser::ast::TableWithJoins {
                     ref relation,
                     ref joins,
                 },
@@ -1037,7 +1044,7 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
 }
 
 impl Ast {
-    fn parse_object_name(name: &ObjectName) -> Result<String> {
+    fn parse_object_name(name: &sqlparser::ast::ObjectName) -> Result<String> {
         let name_parts = &name.0;
         if name_parts.len() > 1 {
             Err(Error::ObjectName {
@@ -1048,15 +1055,15 @@ impl Ast {
             None => Err(Error::ObjectName {
                 reason: "name parts are empty",
             })?,
-            Some(ObjectNamePart::Identifier(ident)) => Ok(ident.value.clone()),
-            Some(ObjectNamePart::Function(_)) => Err(Error::ObjectName {
+            Some(sqlparser::ast::ObjectNamePart::Identifier(ident)) => Ok(ident.value.clone()),
+            Some(sqlparser::ast::ObjectNamePart::Function(_)) => Err(Error::ObjectName {
                 reason: "function names are not supported",
             })?,
         }
     }
 
     fn parse_create_table(
-        SqlParserCreateTable {
+        sqlparser::ast::CreateTable {
             or_replace,
             temporary,
             external,
@@ -1108,7 +1115,15 @@ impl Ast {
             refresh_mode,
             initialize,
             require_user,
-        }: &SqlParserCreateTable,
+            snapshot,
+            partition_of,
+            for_values,
+            with_storage_lifecycle_policy,
+            diststyle,
+            distkey,
+            sortkey,
+            backup,
+        }: &sqlparser::ast::CreateTable,
     ) -> Result<Ast> {
         if *or_replace {
             Err(Error::CreateTable {
@@ -1138,14 +1153,14 @@ impl Ast {
             Err(Error::CreateTable { reason: "iceberg" })?
         }
         match hive_distribution {
-            HiveDistributionStyle::NONE => {}
+            sqlparser::ast::HiveDistributionStyle::NONE => {}
             _ => Err(Error::CreateTable {
                 reason: "hive distribution style",
             })?,
         }
 
         // Hive formats for some reason are always Some()
-        if let Some(HiveFormat {
+        if let Some(sqlparser::ast::HiveFormat {
             row_format,
             serde_properties,
             storage,
@@ -1319,7 +1334,7 @@ impl Ast {
             Err(Error::CreateTable { reason: "dynamic" })?
         }
         match table_options {
-            CreateTableOptions::None => (),
+            sqlparser::ast::CreateTableOptions::None => (),
             _ => Err(Error::CreateTable {
                 reason: "table options",
             })?,
@@ -1377,13 +1392,12 @@ impl Ast {
 
     #[allow(clippy::too_many_arguments)]
     fn parse_alter_table(
-        name: &ObjectName,
+        name: &sqlparser::ast::ObjectName,
         if_exists: bool,
         only: bool,
         operations: &[sqlparser::ast::AlterTableOperation],
         location: Option<&sqlparser::ast::HiveSetLocation>,
-        on_cluster: Option<&Ident>,
-        iceberg: bool,
+        on_cluster: Option<&sqlparser::ast::Ident>,
         _end_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
     ) -> Result<Ast> {
         // sqlite doesn't support if exists in alter
@@ -1406,10 +1420,6 @@ impl Ast {
         if location.is_some() {
             Err(Error::AlterTable { reason: "location" })?
         }
-        // iceberg syntax
-        if iceberg {
-            Err(Error::AlterTable { reason: "iceberg" })?
-        }
         let name = Self::parse_object_name(name)?;
         if operations.len() != 1 {
             Err(Error::AlterTable {
@@ -1420,10 +1430,10 @@ impl Ast {
         Ok(Ast::AlterTable { name, operation })
     }
 
-    fn parse_function_args(args: &FunctionArguments) -> Result<Vec<FunctionArg>> {
+    fn parse_function_args(args: &sqlparser::ast::FunctionArguments) -> Result<Vec<FunctionArg>> {
         let args = match args {
-            FunctionArguments::None => vec![],
-            FunctionArguments::List(list) => {
+            sqlparser::ast::FunctionArguments::None => vec![],
+            sqlparser::ast::FunctionArguments::List(list) => {
                 if !list.clauses.is_empty() {
                     Err(Error::FunctionArguments {
                         reason: "function clauses are not yet supported",
@@ -1455,9 +1465,9 @@ impl Ast {
                             }
                             sqlparser::ast::FunctionArg::Unnamed(expr) => match expr {
                                 sqlparser::ast::FunctionArgExpr::Wildcard => FunctionArg::Wildcard,
-                                sqlparser::ast::FunctionArgExpr::Expr(Expr::Identifier(ident)) => {
-                                    FunctionArg::Ident(ident.value.clone())
-                                }
+                                sqlparser::ast::FunctionArgExpr::Expr(
+                                    sqlparser::ast::Expr::Identifier(ident),
+                                ) => FunctionArg::Ident(ident.value.clone()),
                                 _ => Err(Error::FunctionArgument {
                                     reason: "unnamed",
                                     argument: Box::new(arg.clone()),
@@ -1468,7 +1478,7 @@ impl Ast {
                     })
                     .collect::<Result<_>>()?
             }
-            FunctionArguments::Subquery(query) => Err(Error::FunctionArguments {
+            sqlparser::ast::FunctionArguments::Subquery(query) => Err(Error::FunctionArguments {
                 reason: "subquery",
                 arguments: Box::new(args.clone()),
             })?,
@@ -1477,7 +1487,7 @@ impl Ast {
     }
 
     fn parse_create_index(
-        CreateIndex {
+        sqlparser::ast::CreateIndex {
             name,
             table_name,
             columns,
@@ -1491,7 +1501,7 @@ impl Ast {
             predicate,
             index_options,
             alter_options,
-        }: &CreateIndex,
+        }: &sqlparser::ast::CreateIndex,
     ) -> Result<Self> {
         if *if_not_exists {
             Err(Error::CreateIndex {
@@ -1540,9 +1550,11 @@ impl Ast {
         let columns = columns
             .iter()
             .map(
-                |index_column @ IndexColumn { column, .. }| -> Result<String> {
+                |index_column @ sqlparser::ast::IndexColumn { column, .. }| -> Result<String> {
                     match &column.expr {
-                        Expr::Identifier(Ident { value, .. }) => Ok(value.clone()),
+                        sqlparser::ast::Expr::Identifier(sqlparser::ast::Ident {
+                            value, ..
+                        }) => Ok(value.clone()),
                         expr => Err(Error::CreateIndexColumn {
                             column: Box::new(index_column.clone()),
                         })?,
@@ -1558,7 +1570,7 @@ impl Ast {
         })
     }
 
-    fn parse_query(query: &Query) -> Result<Ast> {
+    fn parse_query(query: &sqlparser::ast::Query) -> Result<Ast> {
         // FIXME: support CTEs
         if query.with.is_some() {
             Err(Error::CTE)?
@@ -1577,7 +1589,7 @@ impl Ast {
             Err(Error::For)?
         }
         let select = match &*query.body {
-            SetExpr::Select(select) => &**select,
+            sqlparser::ast::SetExpr::Select(select) => &**select,
             other => Err(Error::Select {
                 set_expr: Box::new(other.clone()),
             })?,
@@ -1593,11 +1605,13 @@ impl Ast {
             .iter()
             .map(|projection| -> Result<_> {
                 match projection {
-                    SelectItem::Wildcard(_) => Ok(Projection::WildCard),
-                    SelectItem::UnnamedExpr(Expr::Identifier(ident)) => {
-                        Ok(Projection::Identifier(ident.value.clone()))
-                    }
-                    SelectItem::UnnamedExpr(Expr::Function(function)) => {
+                    sqlparser::ast::SelectItem::Wildcard(_) => Ok(Projection::WildCard),
+                    sqlparser::ast::SelectItem::UnnamedExpr(sqlparser::ast::Expr::Identifier(
+                        ident,
+                    )) => Ok(Projection::Identifier(ident.value.clone())),
+                    sqlparser::ast::SelectItem::UnnamedExpr(sqlparser::ast::Expr::Function(
+                        function,
+                    )) => {
                         let function_name = Self::parse_object_name(&function.name)?.to_lowercase();
                         match function_name.as_str() {
                             "count" => {
@@ -1616,14 +1630,22 @@ impl Ast {
                             })?,
                         }
                     }
-                    SelectItem::UnnamedExpr(Expr::Value(value)) => match &value.value {
-                        Value::Number(value, _) => Ok(Projection::NumericLiteral(value.clone())),
-                        Value::SingleQuotedString(value) => Ok(Projection::String(value.clone())),
-                        value => Err(Error::SelectionValue {
-                            value: Box::new(value.clone()),
-                        })?,
-                    },
-                    SelectItem::UnnamedExpr(Expr::CompoundIdentifier(values)) => {
+                    sqlparser::ast::SelectItem::UnnamedExpr(sqlparser::ast::Expr::Value(value)) => {
+                        match &value.value {
+                            sqlparser::ast::Value::Number(value, _) => {
+                                Ok(Projection::NumericLiteral(value.clone()))
+                            }
+                            sqlparser::ast::Value::SingleQuotedString(value) => {
+                                Ok(Projection::String(value.clone()))
+                            }
+                            value => Err(Error::SelectionValue {
+                                value: Box::new(value.clone()),
+                            })?,
+                        }
+                    }
+                    sqlparser::ast::SelectItem::UnnamedExpr(
+                        sqlparser::ast::Expr::CompoundIdentifier(values),
+                    ) => {
                         // SQLite only supports table.column, not schema.table.column or database.table.column
                         if values.len() != 2 {
                             Err(Error::CompoundIdentifier {
@@ -1653,7 +1675,9 @@ impl Ast {
             sqlparser::ast::GroupByExpr::Expressions(expr, modifier) if modifier.is_empty() => expr
                 .iter()
                 .map(|expr| match expr {
-                    Expr::Identifier(ident) => Ok(GroupByParameter::Ident(ident.value.clone())),
+                    sqlparser::ast::Expr::Identifier(ident) => {
+                        Ok(GroupByParameter::Ident(ident.value.clone()))
+                    }
                     _ => Err(Error::GroupBy {
                         reason: "unsupported expression in group by",
                     })?,
@@ -1683,7 +1707,7 @@ impl Ast {
                                 })?
                             }
                             let ident = match &expression.expr {
-                                Expr::Identifier(ident) => ident.value.clone(),
+                                sqlparser::ast::Expr::Identifier(ident) => ident.value.clone(),
                                 expr => Err(Error::OrderBy {
                                     reason: "unsupported order by expression",
                                 })?,
@@ -1741,6 +1765,13 @@ impl Ast {
             insert_alias,
             settings,
             format_clause,
+            insert_token,
+            optimizer_hints,
+            output,
+            multi_table_insert_type,
+            multi_table_into_clauses,
+            multi_table_when_clauses,
+            multi_table_else_clause,
         } = insert;
         // FIXME:
         if or.is_some() {
@@ -1820,14 +1851,14 @@ impl Ast {
         };
         Ok(Ast::Insert {
             table: name,
-            columns: columns.iter().map(|ident| ident.value.clone()).collect(),
+            columns: columns.iter().map(|ident| ident.to_string()).collect(),
             source: Self::parse_insert_source(source)?,
         })
     }
 
-    fn parse_insert_source(values: &Query) -> Result<Vec<Vec<InsertSource>>> {
+    fn parse_insert_source(values: &sqlparser::ast::Query) -> Result<Vec<Vec<InsertSource>>> {
         let values = match values.body.as_ref() {
-            SetExpr::Values(values) if !values.explicit_row => values
+            sqlparser::ast::SetExpr::Values(values) if !values.explicit_row => values
                 .rows
                 .iter()
                 .map(|row| -> Result<Vec<InsertSource>> {
@@ -1843,14 +1874,19 @@ impl Ast {
         Ok(values)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_update(
-        table: &TableWithJoins,
-        assignments: &[Assignment],
-        from: Option<&UpdateTableFromKind>,
-        selection: Option<&Expr>,
-        returning: Option<&[SelectItem]>,
-        or: Option<&SqliteOnConflict>,
-        limit: Option<&Expr>,
+        update_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
+        optimizer_hints: &[sqlparser::ast::OptimizerHint],
+        table: &sqlparser::ast::TableWithJoins,
+        assignments: &[sqlparser::ast::Assignment],
+        from: Option<&sqlparser::ast::UpdateTableFromKind>,
+        selection: Option<&sqlparser::ast::Expr>,
+        returning: Option<&[sqlparser::ast::SelectItem]>,
+        output: Option<&sqlparser::ast::OutputClause>,
+        or: Option<&sqlparser::ast::SqliteOnConflict>,
+        order_by: &[sqlparser::ast::OrderByExpr],
+        limit: Option<&sqlparser::ast::Expr>,
     ) -> Result<Ast> {
         if from.is_some() {
             Err(Error::Update {
@@ -1873,7 +1909,7 @@ impl Ast {
             })?
         }
         let table = match &table.relation {
-            TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
+            sqlparser::ast::TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
             table_factor => Err(Error::UpdateTableType {
                 table_factor: Box::new(table_factor.clone()),
             })?,
@@ -1882,7 +1918,9 @@ impl Ast {
             .iter()
             .map(|assigment| {
                 let target = match &assigment.target {
-                    AssignmentTarget::ColumnName(name) => Self::parse_object_name(name)?,
+                    sqlparser::ast::AssignmentTarget::ColumnName(name) => {
+                        Self::parse_object_name(name)?
+                    }
                     target => Err(Error::UpdateAssignmentTarget {
                         target: Box::new(target.clone()),
                     })?,
@@ -1901,7 +1939,7 @@ impl Ast {
         })
     }
 
-    fn parse_delete(delete: &Delete) -> Result<Ast> {
+    fn parse_delete(delete: &sqlparser::ast::Delete) -> Result<Ast> {
         if !delete.tables.is_empty() {
             Err(Error::Delete {
                 reason: "multiple tables",
@@ -1923,8 +1961,8 @@ impl Ast {
         }
 
         let tables = match &delete.from {
-            FromTable::WithFromKeyword(tables) => tables,
-            FromTable::WithoutKeyword(_) => Err(Error::Delete {
+            sqlparser::ast::FromTable::WithFromKeyword(tables) => tables,
+            sqlparser::ast::FromTable::WithoutKeyword(_) => Err(Error::Delete {
                 reason: "without from",
             })?,
         };
@@ -1948,10 +1986,10 @@ impl Ast {
     }
 
     fn parse_drop(
-        object_type: &ObjectType,
+        object_type: &sqlparser::ast::ObjectType,
         if_exists: bool,
-        names: &[ObjectName],
-        table: Option<&ObjectName>,
+        names: &[sqlparser::ast::ObjectName],
+        table: Option<&sqlparser::ast::ObjectName>,
     ) -> Result<Self> {
         let name = match names {
             [table_name] => Self::parse_object_name(table_name)?,
@@ -1961,8 +1999,8 @@ impl Ast {
             })?,
         };
         match object_type {
-            ObjectType::Table => Ok(Ast::DropTable { if_exists, name }),
-            ObjectType::Index => Self::parse_drop_index(if_exists, name, table),
+            sqlparser::ast::ObjectType::Table => Ok(Ast::DropTable { if_exists, name }),
+            sqlparser::ast::ObjectType::Index => Self::parse_drop_index(if_exists, name, table),
             _ => Err(Error::Drop {
                 reason: "object type",
                 object_type: Some(*object_type),
@@ -1970,7 +2008,11 @@ impl Ast {
         }
     }
 
-    fn parse_drop_index(if_exists: bool, name: String, table: Option<&ObjectName>) -> Result<Self> {
+    fn parse_drop_index(
+        if_exists: bool,
+        name: String,
+        table: Option<&sqlparser::ast::ObjectName>,
+    ) -> Result<Self> {
         let table = match table.map(Self::parse_object_name) {
             Some(name) => name?,
             None => Err(Error::DropIndex {
@@ -1989,29 +2031,32 @@ impl Ast {
             .iter()
             .map(|statement| {
                 let result = match statement {
-                    Statement::CreateTable(create_table) => Self::parse_create_table(create_table)?,
-                    Statement::AlterTable {
+                    sqlparser::ast::Statement::CreateTable(create_table) => {
+                        Self::parse_create_table(create_table)?
+                    }
+                    sqlparser::ast::Statement::AlterTable(sqlparser::ast::AlterTable {
                         name,
                         if_exists,
                         only,
                         operations,
                         location,
                         on_cluster,
-                        iceberg,
                         end_token,
-                    } => Self::parse_alter_table(
+                        table_type,
+                    }) => Self::parse_alter_table(
                         name,
                         *if_exists,
                         *only,
                         operations.as_slice(),
                         location.as_ref(),
                         on_cluster.as_ref(),
-                        *iceberg,
                         end_token,
                     )?,
-                    Statement::CreateIndex(index) => Self::parse_create_index(index)?,
-                    Statement::Query(query) => Self::parse_query(query)?,
-                    Statement::Drop {
+                    sqlparser::ast::Statement::CreateIndex(index) => {
+                        Self::parse_create_index(index)?
+                    }
+                    sqlparser::ast::Statement::Query(query) => Self::parse_query(query)?,
+                    sqlparser::ast::Statement::Drop {
                         object_type,
                         if_exists,
                         names,
@@ -2021,25 +2066,33 @@ impl Ast {
                         temporary,
                         table,
                     } => Self::parse_drop(object_type, *if_exists, names, table.as_ref())?,
-                    Statement::Insert(insert) => Self::parse_insert(insert)?,
-                    Statement::Update {
+                    sqlparser::ast::Statement::Insert(insert) => Self::parse_insert(insert)?,
+                    sqlparser::ast::Statement::Update(sqlparser::ast::Update {
+                        update_token,
+                        optimizer_hints,
                         table,
                         assignments,
                         from,
                         selection,
                         returning,
+                        output,
                         or,
+                        order_by,
                         limit,
-                    } => Self::parse_update(
+                    }) => Self::parse_update(
+                        update_token,
+                        optimizer_hints.as_slice(),
                         table,
                         assignments.as_slice(),
                         from.as_ref(),
                         selection.as_ref(),
-                        returning.as_deref(),
+                        returning.as_ref().map(|v| v.as_slice()),
+                        output.as_ref(),
                         or.as_ref(),
+                        order_by.as_slice(),
                         limit.as_ref(),
                     )?,
-                    Statement::Delete(delete) => Self::parse_delete(delete)?,
+                    sqlparser::ast::Statement::Delete(delete) => Self::parse_delete(delete)?,
                     _ => Err(Error::Statement {
                         statement: Box::new(statement.clone()),
                     })?,
