@@ -1,5 +1,5 @@
-use sqlx::{Database, Error};
-use std::{borrow::Cow, future::Future};
+use sqlx::{Database, Error, SqlStr};
+use std::future::Future;
 
 pub trait AcquireExt<D: Database> {
     fn start_transaction(
@@ -15,7 +15,7 @@ impl AcquireExt<sqlx::Sqlite> for sqlx::Pool<sqlx::Sqlite> {
         let conn = self.acquire();
 
         async move {
-            sqlx::Transaction::begin(conn.await?, Some(Cow::Borrowed("BEGIN IMMEDIATE"))).await
+            sqlx::Transaction::begin(conn.await?, Some(SqlStr::from_static("BEGIN IMMEDIATE"))).await
         }
     }
 }
