@@ -33,7 +33,7 @@ fn build_queries(
     span: proc_macro2::Span,
     query: &str,
 ) -> Result<(String, String, String), proc_macro2::TokenStream> {
-    let ast_list = match sql_bridge::Ast::parse(query) {
+    let ast_list = match Ast::parse(query) {
         Ok(ast) => ast,
         Err(e) => {
             let err = format!("failed to parse query: {e}");

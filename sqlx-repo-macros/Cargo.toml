@@ -6,6 +6,9 @@ license.workspace = true
 authors.workspace = true
 description = "sqlx-repo macros"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 

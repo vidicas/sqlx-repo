@@ -207,16 +207,15 @@ impl Expander {
 
     fn visit_type(&mut self, pos: &mut usize, ty: &mut syn::Type, acc: &mut Vec<syn::Lifetime>) {
         match ty {
-            syn::Type::Reference(rf) => {
-                if rf.lifetime.is_none() {
+            syn::Type::Reference(rf)
+                if rf.lifetime.is_none() => {
                     let lifetime = Self::get_lifetime(pos);
                     rf.lifetime = Some(lifetime.clone());
                     acc.push(lifetime);
                 }
-            }
             syn::Type::Path(path) => self.visit_path(pos, &mut path.path, acc),
             syn::Type::Tuple(tuple) => {
-                for ty in tuple.elems.iter_mut() {
+                for ty in &mut tuple.elems {
                     self.visit_type(pos, ty, acc);
                 }
             }
@@ -225,11 +224,11 @@ impl Expander {
     }
 
     fn visit_path(&mut self, pos: &mut usize, path: &mut syn::Path, acc: &mut Vec<syn::Lifetime>) {
-        for segment in path.segments.iter_mut() {
+        for segment in &mut path.segments {
             if let syn::PathArguments::AngleBracketed(params) = &mut segment.arguments {
-                for arg in params.args.iter_mut() {
+                for arg in &mut params.args {
                     if let syn::GenericArgument::Type(ty) = arg {
-                        self.visit_type(pos, ty, acc)
+                        self.visit_type(pos, ty, acc);
                     }
                 }
             }
@@ -281,8 +280,8 @@ impl Expander {
         }
 
         if func_signature.generics.where_clause.is_none() {
-            func_signature.generics.where_clause = Some(syn::WhereClause {
-                where_token: Default::default(),
+            func_signature.generics.where_clause = Some(WhereClause {
+                where_token: <syn::token::Where>::default(),
                 predicates: syn::punctuated::Punctuated::new(),
             });
         }
@@ -290,7 +289,7 @@ impl Expander {
         // for each generic parameter specify 'future_lifetime as a superclass
         // add bounds to all generics
         if let Some(where_clause) = &mut func_signature.generics.where_clause {
-            for param in func_signature.generics.params.iter() {
+            for param in &func_signature.generics.params {
                 let (ident, param) = match param {
                     syn::GenericParam::Type(param) => {
                         let ident = &param.ident;
@@ -301,7 +300,7 @@ impl Expander {
                         let lifetime = &lt.lifetime;
                         (ident, quote::quote!(#lifetime))
                     }
-                    _ => {
+                    syn::GenericParam::Const(_) => {
                         self.error =
                             Some(ValidationError::UnsupportedFuncGenericType(param.span()));
                         return;
@@ -329,7 +328,7 @@ impl Expander {
 
     fn generate_trait_implementation(
         &self,
-        attributes: proc_macro2::TokenStream,
+        attributes: &proc_macro2::TokenStream,
     ) -> proc_macro2::TokenStream {
         let trait_name = self
             .trait_name
@@ -375,19 +374,19 @@ impl Expander {
                             }
                             let pool = sqlx::Pool::<sqlx::Sqlite>::connect_with(sqlite_options).await?;
                             Box::new(
-                                DatabaseRepository::new( database_url.as_ref(), pool).await?
+                                DatabaseRepository::new( database_url.as_ref(), pool)?
                             )
                         }
                         "postgres" => {
                             let pool = sqlx::Pool::<sqlx::Postgres>::connect(database_url.as_str()).await?;
                             Box::new(
-                                DatabaseRepository::new( database_url.as_str(), pool ).await?
+                                DatabaseRepository::new( database_url.as_str(), pool )?
                             )
                         },
                         "mysql" => {
                             let pool = sqlx::Pool::<sqlx::MySql>::connect(database_url.as_str()).await?;
                             Box::new(
-                                DatabaseRepository::new(database_url.as_str(), pool).await?
+                                DatabaseRepository::new(database_url.as_str(), pool)?
                             )
                         },
                         unsupported => Err(format!("unsupported database: {unsupported}"))?,
@@ -411,7 +410,7 @@ impl VisitMut for Expander {
             syn::Item::Impl(i)
                 if i.self_ty.to_token_stream().to_string() != "DatabaseRepository" =>
             {
-                self.error = Some(ValidationError::IncorrectImplTypeName(i.span()))
+                self.error = Some(ValidationError::IncorrectImplTypeName(i.span()));
             }
             syn::Item::Impl(i) if i.trait_.is_some() => {
                 let trait_path = &i.trait_.as_ref().unwrap().1;
@@ -425,7 +424,7 @@ impl VisitMut for Expander {
                     return;
                 }
                 self.trait_name = trait_name.cloned();
-                visit_mut::visit_item_mut(self, item)
+                visit_mut::visit_item_mut(self, item);
             }
             _ => {
                 self.error = Some(ValidationError::NotTraitImplBlock(item.span()));
@@ -450,20 +449,17 @@ impl VisitMut for Expander {
             .push(syn::GenericParam::Type(type_param("D")));
 
         // append <D> after DatabaseRepository
-        match &mut *i.self_ty {
-            syn::Type::Path(path) => {
-                let path_segment = path.path.segments.first_mut().unwrap();
-                path_segment.arguments = syn::PathArguments::AngleBracketed(type_param("<D>"))
-            }
-            _ => {
-                self.error = Some(ValidationError::NotTraitImplBlock(i.span()));
-                return;
-            }
-        };
+        if let syn::Type::Path(path) = &mut *i.self_ty {
+            let path_segment = path.path.segments.first_mut().unwrap();
+            path_segment.arguments = syn::PathArguments::AngleBracketed(type_param("<D>"));
+        } else {
+            self.error = Some(ValidationError::NotTraitImplBlock(i.span()));
+            return;
+        }
 
         // set where clause
         i.generics.where_clause = Some(self.where_clause());
-        visit_mut::visit_item_impl_mut(self, i)
+        visit_mut::visit_item_impl_mut(self, i);
     }
 
     fn visit_impl_item_type_mut(&mut self, i: &mut syn::ImplItemType) {
@@ -481,7 +477,7 @@ impl VisitMut for Expander {
 }
 
 pub fn expand(
-    attrs: proc_macro2::TokenStream,
+    attrs: &proc_macro2::TokenStream,
     item: &mut syn::Item,
 ) -> Result<
     (
@@ -563,7 +559,7 @@ mod test {
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
 
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
 
         assert!(result.is_ok(), "{}", result.unwrap_err().to_string());
 
@@ -868,7 +864,7 @@ pub trait Repo {
         assert_eq!(
             error.to_compile_error().to_string(),
             "compile_error ! (\"No generics allowed in trait implementation\")"
-        )
+        );
     }
 
     #[test]
@@ -878,13 +874,13 @@ pub trait Repo {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(
             error.to_string(),
             "compile_error ! (\"No generics allowed in trait implementation\")"
-        )
+        );
     }
 
     #[test]
@@ -896,13 +892,13 @@ pub trait Repo {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(
             error.to_string(),
             "compile_error ! (\"No where clause allowed in trait implementation\")"
-        )
+        );
     }
 
     #[test]
@@ -915,13 +911,13 @@ pub trait Repo {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(
             error.to_string(),
             "compile_error ! (\"Trait associated types are not supported\")"
-        )
+        );
     }
 
     #[test]
@@ -932,13 +928,13 @@ pub trait Repo {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(
             error.to_string(),
             "compile_error ! (\"Only trait implementation blocks are supported\")"
-        )
+        );
     }
 
     #[test]
@@ -949,12 +945,12 @@ pub trait Repo {
         );
 
         let mut syntax_tree: syn::Item = syn::parse2(code).unwrap();
-        let result = expand(proc_macro2::TokenStream::new(), &mut syntax_tree);
+        let result = expand(&proc_macro2::TokenStream::new(), &mut syntax_tree);
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(
             error.to_string(),
             "compile_error ! (\"Incorrect type name in trait implementation\")"
-        )
+        );
     }
 }
