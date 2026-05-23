@@ -2,6 +2,40 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 use sqlparser::ast::ObjectType;
 
 #[test]
+fn drop_table_cascade() {
+    let input = "DROP TABLE foo CASCADE";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "cascade",
+                object_type: None
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported drop: cascade");
+}
+
+#[test]
+fn drop_table_restrict() {
+    let input = "DROP TABLE foo RESTRICT";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "restrict",
+                object_type: None
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported drop: restrict");
+}
+
+#[test]
 fn drop_index() {
     let input = "DROP INDEX idx ON tbl";
     let mut ast = parse(input).unwrap();

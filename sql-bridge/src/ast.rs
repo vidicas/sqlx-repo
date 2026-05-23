@@ -1108,14 +1108,14 @@ impl Ast {
             refresh_mode,
             initialize,
             require_user,
-            snapshot: _,
-            partition_of: _,
-            for_values: _,
-            with_storage_lifecycle_policy: _,
-            diststyle: _,
-            distkey: _,
-            sortkey: _,
-            backup: _,
+            snapshot,
+            partition_of,
+            for_values,
+            with_storage_lifecycle_policy,
+            diststyle,
+            distkey,
+            sortkey,
+            backup,
         }: &sqlparser::ast::CreateTable,
     ) -> Result<Ast> {
         if *or_replace {
@@ -1366,6 +1366,52 @@ impl Ast {
             Err(Error::CreateTable {
                 reason: "require user",
             })?;
+        }
+        // BigQuery "CREATE SNAPSHOT TABLE"
+        if *snapshot {
+            Err(Error::CreateTable {
+                reason: "snapshot",
+            })?;
+        }
+        // Postgres "PARTITION OF"
+        if partition_of.is_some() {
+            Err(Error::CreateTable {
+                reason: "partition of",
+            })?;
+        }
+        // Postgres "FOR VALUES"
+        if for_values.is_some() {
+            Err(Error::CreateTable {
+                reason: "for values",
+            })?;
+        }
+        // Snowflake "WITH STORAGE LIFECYCLE POLICY"
+        if with_storage_lifecycle_policy.is_some() {
+            Err(Error::CreateTable {
+                reason: "with storage lifecycle policy",
+            })?;
+        }
+        // Redshift distribution style
+        if diststyle.is_some() {
+            Err(Error::CreateTable {
+                reason: "diststyle",
+            })?;
+        }
+        // Redshift distribution key
+        if distkey.is_some() {
+            Err(Error::CreateTable {
+                reason: "distkey",
+            })?;
+        }
+        // Redshift sort key
+        if sortkey.is_some() {
+            Err(Error::CreateTable {
+                reason: "sortkey",
+            })?;
+        }
+        // Redshift "BACKUP YES/NO"
+        if backup.is_some() {
+            Err(Error::CreateTable { reason: "backup" })?;
         }
 
         let name = Self::parse_object_name(name)?;
@@ -1765,12 +1811,12 @@ impl Ast {
             settings,
             format_clause,
             insert_token: _,
-            optimizer_hints: _,
-            output: _,
-            multi_table_insert_type: _,
-            multi_table_into_clauses: _,
-            multi_table_when_clauses: _,
-            multi_table_else_clause: _,
+            optimizer_hints,
+            output,
+            multi_table_insert_type,
+            multi_table_into_clauses,
+            multi_table_when_clauses,
+            multi_table_else_clause,
         } = insert;
         // FIXME:
         if or.is_some() {
@@ -1840,6 +1886,36 @@ impl Ast {
                 reason: "format clause",
             })?;
         }
+        if !optimizer_hints.is_empty() {
+            Err(Error::Insert {
+                reason: "optimizer hints",
+            })?;
+        }
+        if output.is_some() {
+            Err(Error::Insert {
+                reason: "output clause",
+            })?;
+        }
+        if multi_table_insert_type.is_some() {
+            Err(Error::Insert {
+                reason: "multi-table insert",
+            })?;
+        }
+        if !multi_table_into_clauses.is_empty() {
+            Err(Error::Insert {
+                reason: "multi-table insert",
+            })?;
+        }
+        if !multi_table_when_clauses.is_empty() {
+            Err(Error::Insert {
+                reason: "multi-table insert",
+            })?;
+        }
+        if multi_table_else_clause.is_some() {
+            Err(Error::Insert {
+                reason: "multi-table insert",
+            })?;
+        }
         let name = match &table {
             sqlparser::ast::TableObject::TableName(name) => Self::parse_object_name(name)?,
             _ => Err(Error::InsertTableObject)?,
@@ -1874,17 +1950,32 @@ impl Ast {
     #[allow(clippy::too_many_arguments)]
     fn parse_update(
         _update_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
-        _optimizer_hints: &[sqlparser::ast::OptimizerHint],
+        optimizer_hints: &[sqlparser::ast::OptimizerHint],
         table: &sqlparser::ast::TableWithJoins,
         assignments: &[sqlparser::ast::Assignment],
         from: Option<&sqlparser::ast::UpdateTableFromKind>,
         selection: Option<&sqlparser::ast::Expr>,
         returning: Option<&[sqlparser::ast::SelectItem]>,
-        _output: Option<&sqlparser::ast::OutputClause>,
+        output: Option<&sqlparser::ast::OutputClause>,
         or: Option<&sqlparser::ast::SqliteOnConflict>,
-        _order_by: &[sqlparser::ast::OrderByExpr],
+        order_by: &[sqlparser::ast::OrderByExpr],
         limit: Option<&sqlparser::ast::Expr>,
     ) -> Result<Ast> {
+        if !optimizer_hints.is_empty() {
+            Err(Error::Update {
+                reason: "optimizer hints",
+            })?;
+        }
+        if output.is_some() {
+            Err(Error::Update {
+                reason: "output clause",
+            })?;
+        }
+        if !order_by.is_empty() {
+            Err(Error::Update {
+                reason: "order by",
+            })?;
+        }
         if from.is_some() {
             Err(Error::Update {
                 reason: "from table",
@@ -2039,16 +2130,23 @@ impl Ast {
                         location,
                         on_cluster,
                         end_token,
-                        table_type: _,
-                    }) => Self::parse_alter_table(
-                        name,
-                        *if_exists,
-                        *only,
-                        operations.as_slice(),
-                        location.as_ref(),
-                        on_cluster.as_ref(),
-                        end_token,
-                    )?,
+                        table_type,
+                    }) => {
+                        if table_type.is_some() {
+                            Err(Error::AlterTable {
+                                reason: "typed table",
+                            })?;
+                        }
+                        Self::parse_alter_table(
+                            name,
+                            *if_exists,
+                            *only,
+                            operations.as_slice(),
+                            location.as_ref(),
+                            on_cluster.as_ref(),
+                            end_token,
+                        )?
+                    }
                     sqlparser::ast::Statement::CreateIndex(index) => {
                         Self::parse_create_index(index)?
                     }
@@ -2057,12 +2155,38 @@ impl Ast {
                         object_type,
                         if_exists,
                         names,
-                        cascade: _,
-                        restrict: _,
-                        purge: _,
-                        temporary: _,
+                        cascade,
+                        restrict,
+                        purge,
+                        temporary,
                         table,
-                    } => Self::parse_drop(*object_type, *if_exists, names, table.as_ref())?,
+                    } => {
+                        if *cascade {
+                            Err(Error::Drop {
+                                reason: "cascade",
+                                object_type: None,
+                            })?;
+                        }
+                        if *restrict {
+                            Err(Error::Drop {
+                                reason: "restrict",
+                                object_type: None,
+                            })?;
+                        }
+                        if *purge {
+                            Err(Error::Drop {
+                                reason: "purge",
+                                object_type: None,
+                            })?;
+                        }
+                        if *temporary {
+                            Err(Error::Drop {
+                                reason: "temporary",
+                                object_type: None,
+                            })?;
+                        }
+                        Self::parse_drop(*object_type, *if_exists, names, table.as_ref())?
+                    }
                     sqlparser::ast::Statement::Insert(insert) => Self::parse_insert(insert)?,
                     sqlparser::ast::Statement::Update(sqlparser::ast::Update {
                         update_token,
