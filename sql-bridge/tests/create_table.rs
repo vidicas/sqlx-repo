@@ -419,3 +419,28 @@ FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE RESTRICT
 )"#
     );
 }
+
+#[test]
+fn test_foreign_key_match_kind_unsupported() {
+    for match_kind in ["SIMPLE", "PARTIAL", "FULL"] {
+        let input = format!(
+            r#"
+                CREATE TABLE orders (
+                    id        INT PRIMARY KEY,
+                    customer_id INT,
+                    country_code CHAR(2),
+                    FOREIGN KEY (customer_id, country_code)
+                        REFERENCES customers (id, country)
+                        MATCH {match_kind} 
+                )
+            "#
+        );
+        let res = parse(input);
+        assert!(res.is_err());
+        assert_eq!(
+            "unsupported foreign key with match kind",
+            &res.unwrap_err().to_string(),
+            "{match_kind}"
+        );
+    }
+}

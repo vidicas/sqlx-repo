@@ -1,11 +1,11 @@
 [package]
 name = "sql-bridge"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license.workspace = true
 authors.workspace = true
 description = "SQL bridge for sqlx-repo"
 
 [dependencies]
-sqlparser = "0.59.0"
+sqlparser = "0.62.0"
 
