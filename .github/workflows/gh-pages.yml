@@ -27,6 +27,7 @@ jobs:
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
+
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
 
       - name: Install cargo-binstall
@@ -34,13 +35,13 @@ jobs:
 
       - name: Install Dioxus-CLI
         shell: bash
-        run: cargo binstall dioxus-cli --version 0.7.9 --no-confirm
+        run: cargo binstall dioxus-cli --version 0.7.9 --no-confirm --force
 
       - name: Build Project
         shell: bash
         run: |
           cd sqlx-repo-ui/
-          ASSET_PREFIX="sqlx-repo" "$CARGO_HOME/bin/dx" build --release
+          ASSET_PREFIX="sqlx-repo" dx build --release
           cd ../target/dx/sqlx-repo-ui/release/web/public
           sed -i 's#/assets/#/sqlx-repo/assets/#g' index.html
           sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/sqlx-repo-ui-*.js
@@ -58,9 +59,7 @@ jobs:
         run: |
           echo "=== Current directory ==="
           pwd
-          echo "=== Contents of current directory ==="
-          ls -la
-          echo "=== Contents of sqlx-repo-ui/ ==="
-          ls -la sqlx-repo-ui/ || echo "sqlx-repo-ui/ not found"
-          echo "=== Contents of target/ ==="
-          ls -la target/ || echo "target/ not found"
+          echo "=== cargo home contents ==="
+          ls $CARGO_HOME
+          echo "=== cargo home bin contents ==="
+          ls $CARGO_HOME/bin
