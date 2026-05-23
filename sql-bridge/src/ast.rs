@@ -532,6 +532,8 @@ pub enum Ast {
         selection: Option<Selection>,
         group_by: Vec<GroupByParameter>,
         order_by: Vec<OrderByParameter>,
+        limit: Option<u64>,
+        offset: Option<u64>,
     },
     Insert {
         table: String,
@@ -687,6 +689,7 @@ pub enum GroupByParameter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OrderByParameter {
+    table: Option<String>,
     ident: String,
     option: OrderOption,
 }
@@ -1603,6 +1606,91 @@ impl Ast {
         })
     }
 
+    fn parse_limit_clause(
+        limit_clause: Option<&sqlparser::ast::LimitClause>,
+    ) -> Result<(Option<u64>, Option<u64>)> {
+        match limit_clause {
+            None => Ok((None, None)),
+            // Limit by is used by clickhosue
+            Some(sqlparser::ast::LimitClause::LimitOffset { limit_by, .. })
+                if !limit_by.is_empty() =>
+            {
+                Err(Error::Limit {
+                    reason: "LIMIT BY is not supported",
+                })?
+            }
+            Some(sqlparser::ast::LimitClause::LimitOffset { limit, offset, .. }) => {
+                let limit = match limit {
+                    None => None,
+                    Some(sqlparser::ast::Expr::Value(v))
+                        if matches!(&v.value, sqlparser::ast::Value::Number(_, _)) =>
+                    {
+                        let sqlparser::ast::Value::Number(n, _) = &v.value else {
+                            unreachable!()
+                        };
+                        Some(n.parse::<u64>().map_err(|_| Error::Limit {
+                            reason: "limit value is out of range",
+                        })?)
+                    }
+                    Some(_) => Err(Error::Limit {
+                        reason: "limit must be a literal integer",
+                    })?,
+                };
+                let offset = match offset {
+                    None => None,
+                    Some(sqlparser::ast::Offset {
+                        value: sqlparser::ast::Expr::Value(v),
+                        ..
+                    }) if matches!(&v.value, sqlparser::ast::Value::Number(_, _)) => {
+                        let sqlparser::ast::Value::Number(n, _) = &v.value else {
+                            unreachable!()
+                        };
+                        Some(n.parse::<u64>().map_err(|_| Error::Limit {
+                            reason: "offset value is out of range",
+                        })?)
+                    }
+                    Some(_) => Err(Error::Limit {
+                        reason: "offset must be a literal integer",
+                    })?,
+                };
+                Ok((limit, offset))
+            }
+            Some(sqlparser::ast::LimitClause::OffsetCommaLimit { offset, limit }) => {
+                let limit = match limit {
+                    sqlparser::ast::Expr::Value(v)
+                        if matches!(&v.value, sqlparser::ast::Value::Number(_, _)) =>
+                    {
+                        let sqlparser::ast::Value::Number(n, _) = &v.value else {
+                            unreachable!()
+                        };
+                        n.parse::<u64>().map_err(|_| Error::Limit {
+                            reason: "limit value is out of range",
+                        })?
+                    }
+                    _ => Err(Error::Limit {
+                        reason: "limit must be a literal integer",
+                    })?,
+                };
+                let offset = match offset {
+                    sqlparser::ast::Expr::Value(v)
+                        if matches!(&v.value, sqlparser::ast::Value::Number(_, _)) =>
+                    {
+                        let sqlparser::ast::Value::Number(n, _) = &v.value else {
+                            unreachable!()
+                        };
+                        n.parse::<u64>().map_err(|_| Error::Limit {
+                            reason: "offset value is out of range",
+                        })?
+                    }
+                    _ => Err(Error::Limit {
+                        reason: "offset must be a literal integer",
+                    })?,
+                };
+                Ok((Some(limit), Some(offset)))
+            }
+        }
+    }
+
     fn parse_query(query: &sqlparser::ast::Query) -> Result<Ast> {
         // FIXME: support CTEs
         if query.with.is_some() {
@@ -1610,10 +1698,6 @@ impl Ast {
         }
         if query.fetch.is_some() {
             Err(Error::Fetch)?;
-        }
-        // FIXME: support limits
-        if query.limit_clause.is_some() {
-            Err(Error::Limit)?;
         }
         if !query.locks.is_empty() {
             Err(Error::Locks)?;
@@ -1705,6 +1789,8 @@ impl Ast {
 
         let from_clause = select.from.as_slice().try_into()?;
 
+        let (limit, offset) = Self::parse_limit_clause(query.limit_clause.as_ref())?;
+
         let selection = select
             .selection
             .as_ref()
@@ -1745,9 +1831,16 @@ impl Ast {
                                     reason: "with fill is not supported",
                                 })?;
                             }
-                            let ident = match &expression.expr {
-                                sqlparser::ast::Expr::Identifier(ident) => ident.value.clone(),
-                                _expr => Err(Error::OrderBy {
+                            let (table, ident) = match &expression.expr {
+                                sqlparser::ast::Expr::Identifier(ident) => {
+                                    (None, ident.value.clone())
+                                }
+                                sqlparser::ast::Expr::CompoundIdentifier(parts)
+                                    if parts.len() == 2 =>
+                                {
+                                    (Some(parts[0].value.clone()), parts[1].value.clone())
+                                }
+                                _ => Err(Error::OrderBy {
                                     reason: "unsupported order by expression",
                                 })?,
                             };
@@ -1765,7 +1858,11 @@ impl Ast {
                                     Some(false) => OrderOption::Desc,
                                 },
                             };
-                            Ok(OrderByParameter { ident, option })
+                            Ok(OrderByParameter {
+                                table,
+                                ident,
+                                option,
+                            })
                         })
                         .collect::<Result<Vec<_>>>()?,
                 }
@@ -1779,6 +1876,8 @@ impl Ast {
             selection,
             group_by,
             order_by,
+            limit,
+            offset,
         };
         Ok(ast)
     }
@@ -2343,6 +2442,8 @@ impl Ast {
         selection: Option<&Selection>,
         group_by: &[GroupByParameter],
         order_by: &[OrderByParameter],
+        limit: Option<u64>,
+        offset: Option<u64>,
     ) -> Result<()> {
         buf.write_all(b"SELECT ")?;
         if distinct {
@@ -2422,6 +2523,10 @@ impl Ast {
         if !order_by.is_empty() {
             buf.write_all(b" ORDER BY ")?;
             for (pos, order_option) in order_by.iter().enumerate() {
+                if let Some(table) = &order_option.table {
+                    Self::write_quoted(dialect, buf, table)?;
+                    buf.write_all(b".")?;
+                }
                 Self::write_quoted(dialect, buf, order_option.ident.as_str())?;
                 match &order_option.option {
                     OrderOption::Asc => buf.write_all(b" ASC")?,
@@ -2432,6 +2537,12 @@ impl Ast {
                     buf.write_all(b", ")?;
                 }
             }
+        }
+        if let Some(limit) = limit {
+            write!(buf, " LIMIT {limit}")?;
+        }
+        if let Some(offset) = offset {
+            write!(buf, " OFFSET {offset}")?;
         }
         Ok(())
     }
@@ -2761,6 +2872,8 @@ impl Ast {
                 selection,
                 group_by,
                 order_by,
+                limit,
+                offset,
             } => Self::select_to_sql(
                 dialect,
                 buf,
@@ -2770,6 +2883,8 @@ impl Ast {
                 selection.as_ref(),
                 group_by,
                 order_by,
+                *limit,
+                *offset,
             )?,
             Ast::Insert {
                 table,
