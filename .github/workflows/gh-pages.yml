@@ -29,9 +29,12 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@23ee8ab6b7397851bc11705bcdf46f2519ea0285  # v1.9.0
+
       - name: Install Dioxus-CLI
         shell: bash
-        run: cargo install dioxus-cli --version 0.7.9
+        run: cargo binstall dioxus-cli --version 0.7.9 --no-confirm
 
       - name: Build Project
         shell: bash
