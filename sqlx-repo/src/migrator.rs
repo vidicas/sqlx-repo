@@ -2,7 +2,10 @@ use std::marker::PhantomData;
 
 use crate::{Result, SqlxDBNum};
 use futures::future::BoxFuture;
-use sqlx::{SqlStr, migrate::{Migration as SqlxMigration, MigrationSource, MigrationType}};
+use sqlx::{
+    SqlStr,
+    migrate::{Migration as SqlxMigration, MigrationSource, MigrationType},
+};
 
 #[derive(Debug)]
 pub struct RepoMigrationSource<D> {
@@ -28,6 +31,7 @@ impl<'a, D: SqlxDBNum> MigrationSource<'a> for RepoMigrationSource<D> {
                         Some(&query) => query,
                         None => Err("failed to generate migration, tried to get query at index {query_pos}, which doesn't exist")?
                     };
+                    #[allow(clippy::cast_possible_wrap)]
                     Ok(SqlxMigration::new(pos as _, migration.name.into(), MigrationType::Simple, SqlStr::from_static(query), false))
                 })
                 .collect::<Result<_>>()?;
@@ -59,8 +63,8 @@ pub async fn init_migrator<D: SqlxDBNum>(
     migrations: &[Migration],
 ) -> Result<sqlx::migrate::Migrator, sqlx::migrate::MigrateError> {
     let mut source = RepoMigrationSource::<D>::new();
-    migrations
-        .iter()
-        .for_each(|migration| source.add_migration(*migration));
+    for migration in migrations {
+        source.add_migration(*migration);
+    }
     sqlx::migrate::Migrator::new(source).await
 }

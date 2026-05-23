@@ -1,6 +1,19 @@
 .PHONY: fmt
 fmt:
-	cargo fmt --all && cargo clippy --fix --allow-dirty
+	cargo fmt --all
+
+.PHONY: fix
+fix:
+	cargo clippy --fix --allow-dirty --all-targets --all-features
+
+.PHONY: lint
+lint:
+	cargo fmt --all --check
+	cargo clippy --all-targets --all-features -- -D warnings
+
+.PHONY: deny
+deny:
+	cargo deny check
 
 .PHONY: setup_db
 setup_db:

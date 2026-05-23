@@ -2,9 +2,9 @@
 //! with relational databases, abstracting away the differences between query syntaxes.
 //!
 //! It supports:
-//! - SQLite
-//! - PostgreSQL
-//! - MySQL
+//! - `SQLite`
+//! - `PostgreSQL`
+//! - `MySQL`
 //!
 //! The objective is to define a minimal, shared core of database operations that present and behave
 //! consistently and predictably across supported backends. Features which are only specific to a particular
@@ -362,18 +362,15 @@ impl<D: sqlx::Database + std::fmt::Debug> std::fmt::Debug for DatabaseRepository
 
 fn hide_credentials(url: &str) -> Result<String> {
     let mut url = url::Url::parse(url)?;
-    match url.scheme() {
-        "sqlite" => Ok(url.to_string()),
-        _ => {
-            url.set_username("").or(Err("failed to hide username"))?;
-            url.set_password(None).or(Err("failed to hide password"))?;
-            Ok(url.to_string())
-        }
+    if url.scheme() == "sqlite" { Ok(url.to_string()) } else {
+        url.set_username("").or(Err("failed to hide username"))?;
+        url.set_password(None).or(Err("failed to hide password"))?;
+        Ok(url.to_string())
     }
 }
 
 impl<D: sqlx::Database> DatabaseRepository<D> {
-    pub async fn new(url: &str, pool: sqlx::Pool<D>) -> Result<Self> {
+    pub fn new(url: &str, pool: sqlx::Pool<D>) -> Result<Self> {
         Ok(Self {
             database_url: hide_credentials(url)?,
             pool,

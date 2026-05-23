@@ -14,3 +14,22 @@ authors = [
 ]
 license = "MIT or Apache-2.0"
 readme = "README.md"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unused_import_braces = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# common pedantic false-positives
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+match_same_arms = "allow"
+too_many_lines = "allow"
+unused_async = "allow"
+unused_self = "allow"
+wildcard_imports = "allow"

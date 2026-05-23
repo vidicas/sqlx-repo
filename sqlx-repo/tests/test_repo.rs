@@ -68,7 +68,7 @@ async fn test_database_creation() {
         repo.delete_all().await.unwrap();
         repo.insert().await.unwrap();
         assert_eq!(vec![1, 2], repo.select_all().await.unwrap());
-        println!()
+        println!();
     }
 }
 

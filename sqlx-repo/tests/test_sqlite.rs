@@ -43,7 +43,7 @@ async fn test_database_creation_defaults() {
     repo.create_tables_and_insert_data().await.unwrap();
     assert_eq!(vec![1, 2, 3], repo.select_all_bar().await.unwrap(),);
     repo.delete_all_foo().await.unwrap();
-    assert_eq!(Vec::<i64>::new(), repo.select_all_bar().await.unwrap(),)
+    assert_eq!(Vec::<i64>::new(), repo.select_all_bar().await.unwrap(),);
 }
 
 #[tokio::test]
@@ -53,7 +53,7 @@ async fn test_database_creation_foreign_key_not_enforced() {
     repo.create_tables_and_insert_data().await.unwrap();
     assert_eq!(vec![1, 2, 3], repo.select_all_bar().await.unwrap(),);
     repo.delete_all_foo().await.unwrap();
-    assert_eq!(vec![1, 2, 3], repo.select_all_bar().await.unwrap(),)
+    assert_eq!(vec![1, 2, 3], repo.select_all_bar().await.unwrap(),);
 }
 
 struct TmpFile(NamedTempFile);
@@ -73,14 +73,14 @@ impl Drop for TmpFile {
 
 #[tokio::test]
 async fn test_database_creation_pre_existing_file() {
-    let file = TmpFile(tempfile::NamedTempFile::new().unwrap());
+    let file = TmpFile(NamedTempFile::new().unwrap());
     let url = format!("sqlite://{}", file.path().to_str().unwrap());
     assert!(<dyn Repo>::new(&url).await.is_ok());
 }
 
 #[tokio::test]
 async fn test_database_creation_disallow_creation() {
-    let file = TmpFile(tempfile::NamedTempFile::new().unwrap());
+    let file = TmpFile(NamedTempFile::new().unwrap());
     let url = format!(
         "sqlite://{}/?create_if_missing=false",
         file.path().to_str().unwrap()
@@ -91,12 +91,12 @@ async fn test_database_creation_disallow_creation() {
     assert_eq!(
         "error returned from database: (code: 14) unable to open database file",
         res.unwrap_err().to_string()
-    )
+    );
 }
 
 #[tokio::test]
 async fn test_database_default_creation() {
-    let file = TmpFile(tempfile::NamedTempFile::new().unwrap());
+    let file = TmpFile(NamedTempFile::new().unwrap());
     let url = format!("sqlite://{}", file.path().to_str().unwrap());
     drop(file);
     assert!(<dyn Repo>::new(&url).await.is_ok());

@@ -15,7 +15,8 @@ impl AcquireExt<sqlx::Sqlite> for sqlx::Pool<sqlx::Sqlite> {
         let conn = self.acquire();
 
         async move {
-            sqlx::Transaction::begin(conn.await?, Some(SqlStr::from_static("BEGIN IMMEDIATE"))).await
+            sqlx::Transaction::begin(conn.await?, Some(SqlStr::from_static("BEGIN IMMEDIATE")))
+                .await
         }
     }
 }

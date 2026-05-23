@@ -29,12 +29,9 @@ macro_rules! local_asset {
 }
 
 pub fn copy_to_clipboard(text: &str) {
-    let navigator = match web_sys::window() {
-        Some(window) => window.navigator(),
-        None => {
-            error!("window object is not accessible");
-            return;
-        }
+    let navigator = if let Some(window) = web_sys::window() { window.navigator() } else {
+        error!("window object is not accessible");
+        return;
     };
     let _ = navigator.clipboard().write_text(text);
 }
@@ -195,7 +192,7 @@ pub fn Playground(sql: Option<String>) -> Element {
         *sqlite.write() = message.to_string();
         *postgresql.write() = message.to_string();
         *mysql.write() = message.to_string();
-        *ast_details.write() = "".to_string();
+        *ast_details.write() = String::new();
     };
 
     let encode_query = move || -> String {
@@ -212,14 +209,14 @@ pub fn Playground(sql: Option<String>) -> Element {
     };
 
     let mut handle_query = move |sql: String| {
-        *input_sql.write() = sql.clone();
+        (*input_sql.write()).clone_from(&sql);
 
         if sql.is_empty() {
-            *status.write() = "".to_string();
-            *encoded_query.write() = "".to_string();
+            *status.write() = String::new();
+            *encoded_query.write() = String::new();
             clear();
             return;
-        };
+        }
 
         *encoded_query.write() = encode_query();
 
@@ -232,13 +229,10 @@ pub fn Playground(sql: Option<String>) -> Element {
             }
         };
 
-        let ast = match ast.pop() {
-            Some(a) => a,
-            None => {
-                *status.write() = "Empty AST".to_string();
-                clear();
-                return;
-            }
+        let Some(ast) = ast.pop() else {
+            *status.write() = "Empty AST".to_string();
+            clear();
+            return;
         };
 
         *sqlite.write() = ast
@@ -248,15 +242,14 @@ pub fn Playground(sql: Option<String>) -> Element {
             .to_sql(&PostgreSqlDialect {})
             .expect("Postgres dialect failed.");
         *mysql.write() = ast.to_sql(&MySqlDialect {}).expect("MySql dialect failed");
-        *status.write() = "".to_string();
+        *status.write() = String::new();
 
         let hidden_ast = match HiddenParser::parse_sql(&GenericDialect {}, &sql) {
-            Ok(a) => format!("{:?}", a),
+            Ok(a) => format!("{a:?}"),
             Err(_) => "Failed".to_string(),
         };
         *ast_details.write() = format!(
-            "Sqlx Repo AST: {:?} \n\nSql Parser AST: {}",
-            ast, hidden_ast
+            "Sqlx Repo AST: {ast:?} \n\nSql Parser AST: {hidden_ast}"
         );
     };
 
@@ -264,7 +257,7 @@ pub fn Playground(sql: Option<String>) -> Element {
     if !*parsed.read() {
         *parsed.write() = true;
         if let Some(s) = &sql {
-            handle_query(s.to_string())
+            handle_query(s.clone());
         }
     }
 
@@ -283,11 +276,11 @@ pub fn Playground(sql: Option<String>) -> Element {
                     placeholder: "Your SQL query",
                     value: "{input_sql()}",
                     oninput: move |evt| {
-                        let sql = evt.value().to_string();
+                        let sql = evt.value().clone();
                         handle_query(sql);
                         if let Some(window) = web_sys::window() {
                             let _ = window.location().set_hash(&encoded_query());
-                        };
+                        }
                     }
                 }
                 div {
@@ -500,7 +493,7 @@ pub fn CopyToClipboard(text: String) -> Element {
 #[component]
 pub fn OpenIssue(url: String) -> Element {
     let description = format!(
-        r#"Describe what you observed in the playground: expected vs actual behavior.
+        r"Describe what you observed in the playground: expected vs actual behavior.
 
 ### Expectation
 
@@ -508,15 +501,13 @@ I expected ... but got ...
 
 ### Related Playground
 
-For more details follow the [link]({})
-"#,
-        url
+For more details follow the [link]({url})
+"
     );
     let title: String = byte_serialize(b"Finding from the Playground").collect();
     let body: String = byte_serialize(description.as_bytes()).collect();
     let github_url = format!(
-        "https://github.com/vidicas/sqlx-repo/issues/new?title={}&body={}",
-        title, body
+        "https://github.com/vidicas/sqlx-repo/issues/new?title={title}&body={body}"
     );
     rsx! {
         div {

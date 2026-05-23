@@ -6,6 +6,9 @@ authors.workspace = true
 license.workspace = true
 readme.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 dioxus = { version = "0.7", features = ["web", "router"] }
 sql-bridge = { path = "../sql-bridge" }
