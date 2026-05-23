@@ -217,6 +217,7 @@ impl ColumnOptions {
     }
 }
 
+#[derive(Debug)]
 pub struct ColumnIterator {
     column_options: ColumnOptions,
     pos: usize,
@@ -390,27 +391,27 @@ impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
                         },
                     ) => {
                         if name.is_some() {
-                            Err(Error::PrimaryKey { reason: "name" })?
+                            Err(Error::PrimaryKey { reason: "name" })?;
                         }
                         if index_name.is_some() {
                             Err(Error::PrimaryKey {
                                 reason: "index name",
-                            })?
+                            })?;
                         }
                         if index_type.is_some() {
                             Err(Error::PrimaryKey {
                                 reason: "index type",
-                            })?
+                            })?;
                         }
                         if !index_options.is_empty() {
                             Err(Error::PrimaryKey {
                                 reason: "index options",
-                            })?
+                            })?;
                         }
                         if characteristics.is_some() {
                             Err(Error::PrimaryKey {
                                 reason: "characteristics",
-                            })?
+                            })?;
                         }
                         let columns = columns
                             .iter()
@@ -422,8 +423,8 @@ impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
                                     if operator_class.is_some() {
                                         Err(Error::PrimaryKey {
                                             reason: "operator class",
-                                        })?
-                                    };
+                                        })?;
+                                    }
                                     let sqlparser::ast::OrderByExpr {
                                         expr,
                                         options,
@@ -432,10 +433,10 @@ impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
                                     if with_fill.is_some() {
                                         Err(Error::PrimaryKey {
                                             reason: "`WITH FILL`",
-                                        })?
+                                        })?;
                                     }
                                     if options.nulls_first.is_some() || options.asc.is_some() {
-                                        Err(Error::PrimaryKey { reason: "options" })?
+                                        Err(Error::PrimaryKey { reason: "options" })?;
                                     }
                                     match expr {
                                         sqlparser::ast::Expr::Identifier(ident) => {
@@ -466,22 +467,22 @@ impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
                         if name.is_some() {
                             Err(Error::ForeignKey {
                                 reason: "constraint",
-                            })?
+                            })?;
                         }
                         if on_update.is_some() {
                             Err(Error::ForeignKey {
                                 reason: "on update",
-                            })?
+                            })?;
                         }
                         if characteristics.is_some() {
                             Err(Error::ForeignKey {
                                 reason: "characteristics",
-                            })?
+                            })?;
                         }
                         if match_kind.is_some() {
                             Err(Error::ForeignKey {
                                 reason: "match kind",
-                            })?
+                            })?;
                         }
                         let on_delete = match on_delete {
                             None => None,
@@ -631,7 +632,7 @@ impl TryFrom<&sqlparser::ast::Expr> for Selection {
             sqlparser::ast::Expr::CompoundIdentifier(ids) => {
                 // SQLite only supports table.column, not schema.table.column or database.table.column
                 if ids.len() != 2 {
-                    Err(Error::CompoundIdentifier { length: ids.len() })?
+                    Err(Error::CompoundIdentifier { length: ids.len() })?;
                 }
                 Selection::CompoundIdentifier(CompoundIdentifier {
                     table: ids[0].value.clone(),
@@ -848,10 +849,10 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
     type Error = Error;
 
     fn try_from(table: &sqlparser::ast::Join) -> Result<Self, Self::Error> {
-        /// ClickHouse supports the optional `GLOBAL` keyword before the join operator.
+        /// `ClickHouse` supports the optional `GLOBAL` keyword before the join operator.
         /// See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
         if table.global {
-            Err(Error::Keyword { keyword: "GLOBAL" })?
+            Err(Error::Keyword { keyword: "GLOBAL" })?;
         };
 
         let name = table_relation_to_object_name(&table.relation)?;
@@ -892,31 +893,31 @@ fn table_relation_to_object_name(relation: &sqlparser::ast::TableFactor) -> Resu
             index_hints,
         } => {
             if alias.is_some() {
-                Err(Error::TableAlias)?
+                Err(Error::TableAlias)?;
             }
             if args.is_some() {
-                Err(Error::TableValuedFunctions)?
+                Err(Error::TableValuedFunctions)?;
             }
             if !with_hints.is_empty() {
-                Err(Error::TableWithHints)?
+                Err(Error::TableWithHints)?;
             }
             if version.is_some() {
-                Err(Error::TableVersioning)?
+                Err(Error::TableVersioning)?;
             }
             if *with_ordinality {
-                Err(Error::TableWithOrdinality)?
+                Err(Error::TableWithOrdinality)?;
             }
             if !partitions.is_empty() {
-                Err(Error::TableWithPartitions)?
+                Err(Error::TableWithPartitions)?;
             }
             if json_path.is_some() {
-                Err(Error::TableWithJsonPath)?
+                Err(Error::TableWithJsonPath)?;
             }
             if sample.is_some() {
-                Err(Error::TableWithSampleModifier)?
+                Err(Error::TableWithSampleModifier)?;
             }
             if !index_hints.is_empty() {
-                Err(Error::TableWithIndexHints)?
+                Err(Error::TableWithIndexHints)?;
             }
             Ok(Ast::parse_object_name(name)?)
         }
@@ -943,7 +944,7 @@ impl TryFrom<&[sqlparser::ast::TableWithJoins]> for FromClause {
                 } else {
                     Self::TableWithJoin(TableJoin {
                         name,
-                        join: joins.iter().map(|t| t.try_into()).collect::<Result<_>>()?,
+                        join: joins.iter().map(TryInto::try_into).collect::<Result<_>>()?,
                     })
                 }
             }
@@ -981,12 +982,12 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 if *if_not_exists {
                     Err(Error::AlterTable {
                         reason: "if not exists",
-                    })?
+                    })?;
                 }
                 if column_position.is_some() {
                     Err(Error::AlterTable {
                         reason: "column position",
-                    })?
+                    })?;
                 }
                 let column = column_def.try_into()?;
                 AlterTableOperation::AddColumn { column }
@@ -1019,7 +1020,7 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 if *if_exists {
                     Err(Error::AlterTable {
                         reason: "if exists",
-                    })?
+                    })?;
                 }
                 if drop_behavior.is_some() {
                     Err(Error::AlterTable {
@@ -1029,7 +1030,7 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
                 if column_names.len() > 1 {
                     Err(Error::AlterTable {
                         reason: "multiple columns names",
-                    })?
+                    })?;
                 }
                 AlterTableOperation::DropColumn {
                     name: column_names.first().unwrap().value.clone(),
@@ -1049,7 +1050,7 @@ impl Ast {
         if name_parts.len() > 1 {
             Err(Error::ObjectName {
                 reason: "schema-qualified names are not supported",
-            })?
+            })?;
         }
         match name_parts.first() {
             None => Err(Error::ObjectName {
@@ -1128,29 +1129,29 @@ impl Ast {
         if *or_replace {
             Err(Error::CreateTable {
                 reason: "or replace",
-            })?
+            })?;
         }
         if *temporary {
             Err(Error::CreateTable {
                 reason: "temporary",
-            })?
+            })?;
         }
         if *external {
-            Err(Error::CreateTable { reason: "external" })?
+            Err(Error::CreateTable { reason: "external" })?;
         }
         if global.is_some() {
-            Err(Error::CreateTable { reason: "global" })?
+            Err(Error::CreateTable { reason: "global" })?;
         }
         if *transient {
             Err(Error::CreateTable {
                 reason: "transient",
-            })?
+            })?;
         }
         if *volatile {
-            Err(Error::CreateTable { reason: "volatile" })?
+            Err(Error::CreateTable { reason: "volatile" })?;
         }
         if *iceberg {
-            Err(Error::CreateTable { reason: "iceberg" })?
+            Err(Error::CreateTable { reason: "iceberg" })?;
         }
         match hive_distribution {
             sqlparser::ast::HiveDistributionStyle::NONE => {}
@@ -1173,206 +1174,206 @@ impl Ast {
         {
             Err(Error::CreateTable {
                 reason: "hive formats",
-            })?
+            })?;
         }
 
         if file_format.is_some() {
             Err(Error::CreateTable {
                 reason: "file format",
-            })?
+            })?;
         }
         if location.is_some() {
-            Err(Error::CreateTable { reason: "location" })?
+            Err(Error::CreateTable { reason: "location" })?;
         }
         if query.is_some() {
-            Err(Error::CreateTable { reason: "query" })?
+            Err(Error::CreateTable { reason: "query" })?;
         }
         if *without_rowid {
             Err(Error::CreateTable {
                 reason: "without rowid",
-            })?
+            })?;
         }
         if like.is_some() {
-            Err(Error::CreateTable { reason: "like" })?
+            Err(Error::CreateTable { reason: "like" })?;
         }
         if clone.is_some() {
-            Err(Error::CreateTable { reason: "clone" })?
+            Err(Error::CreateTable { reason: "clone" })?;
         }
         if comment.is_some() {
-            Err(Error::CreateTable { reason: "comment" })?
+            Err(Error::CreateTable { reason: "comment" })?;
         }
         if on_commit.is_some() {
             Err(Error::CreateTable {
                 reason: "on commit",
-            })?
+            })?;
         }
         // ClickHouse "ON CLUSTER" clause:
         if on_cluster.is_some() {
             Err(Error::CreateTable {
                 reason: "on cluster",
-            })?
+            })?;
         }
         // ClickHouse "PRIMARY KEY " clause.
         if primary_key.is_some() {
             Err(Error::CreateTable {
                 reason: "primary key",
-            })?
+            })?;
         }
         // ClickHouse "ORDER BY " clause.
         if order_by.is_some() {
-            Err(Error::CreateTable { reason: "order by" })?
+            Err(Error::CreateTable { reason: "order by" })?;
         }
         // BigQuery: A partition expression for the table.
         if partition_by.is_some() {
             Err(Error::CreateTable {
                 reason: "partition by",
-            })?
+            })?;
         }
         // BigQuery: Table clustering column list.
         if cluster_by.is_some() {
             Err(Error::CreateTable {
                 reason: "cluster by",
-            })?
+            })?;
         }
         // Hive: Table clustering column list.
         if clustered_by.is_some() {
             Err(Error::CreateTable {
                 reason: "clustered by",
-            })?
+            })?;
         }
         // Postgres `INHERITs` clause, which contains the list of tables from which the new table inherits.
         if inherits.is_some() {
-            Err(Error::CreateTable { reason: "inherits" })?
+            Err(Error::CreateTable { reason: "inherits" })?;
         }
         // SQLite "STRICT" clause.
         if *strict {
-            Err(Error::CreateTable { reason: "strict" })?
+            Err(Error::CreateTable { reason: "strict" })?;
         }
         // Snowflake "COPY GRANTS" clause.
         if *copy_grants {
             Err(Error::CreateTable {
                 reason: "copy grant",
-            })?
+            })?;
         }
         // Snowflake "ENABLE_SCHEMA_EVOLUTION" clause.
         if enable_schema_evolution.is_some() {
             Err(Error::CreateTable {
                 reason: "enable schema evolution",
-            })?
+            })?;
         }
         // Snowflake "CHANGE_TRACKING" clause.
         if change_tracking.is_some() {
             Err(Error::CreateTable {
                 reason: "change tracking",
-            })?
+            })?;
         }
         // Snowflake "DATA_RETENTION_TIME_IN_DAYS" clause.
         if data_retention_time_in_days.is_some() {
             Err(Error::CreateTable {
                 reason: "data retention time in days",
-            })?
+            })?;
         }
         // Snowflake "MAX_DATA_EXTENSION_TIME_IN_DAYS" clause.
         if max_data_extension_time_in_days.is_some() {
             Err(Error::CreateTable {
                 reason: "max data extension time in days",
-            })?
+            })?;
         }
         // Snowflake "DEFAULT_DDL_COLLATION" clause.
         if default_ddl_collation.is_some() {
             Err(Error::CreateTable {
                 reason: "default ddl collation",
-            })?
+            })?;
         }
         // Snowflake "WITH AGGREGATION POLICY" clause.
         if with_aggregation_policy.is_some() {
             Err(Error::CreateTable {
                 reason: "with aggragation policy",
-            })?
+            })?;
         }
         // Snowflake "WITH ROW ACCESS POLICY" clause.
         if with_row_access_policy.is_some() {
             Err(Error::CreateTable {
                 reason: "with row access policy",
-            })?
+            })?;
         }
         // Snowflake "WITH TAG" clause.
         if with_tags.is_some() {
             Err(Error::CreateTable {
                 reason: "with tags",
-            })?
+            })?;
         }
         // Snowflake "EXTERNAL_VOLUME" clause for Iceberg tables
         if external_volume.is_some() {
             Err(Error::CreateTable {
                 reason: "external volume",
-            })?
+            })?;
         }
         // Snowflake "BASE_LOCATION" clause for Iceberg tables
         if base_location.is_some() {
             Err(Error::CreateTable {
                 reason: "base location",
-            })?
+            })?;
         }
         // Snowflake "CATALOG" clause for Iceberg tables
         if catalog.is_some() {
-            Err(Error::CreateTable { reason: "catalog" })?
+            Err(Error::CreateTable { reason: "catalog" })?;
         }
         // Snowflake "CATALOG_SYNC" clause for Iceberg tables
         if catalog_sync.is_some() {
             Err(Error::CreateTable {
                 reason: "catalog sync",
-            })?
+            })?;
         }
         // Snowflake "STORAGE_SERIALIZATION_POLICY" clause for Iceberg tables
         if storage_serialization_policy.is_some() {
             Err(Error::CreateTable {
                 reason: "storage serialization policy",
-            })?
+            })?;
         }
         if *dynamic {
-            Err(Error::CreateTable { reason: "dynamic" })?
+            Err(Error::CreateTable { reason: "dynamic" })?;
         }
         match table_options {
             sqlparser::ast::CreateTableOptions::None => (),
             _ => Err(Error::CreateTable {
                 reason: "table options",
             })?,
-        };
+        }
 
         if version.is_some() {
-            Err(Error::CreateTable { reason: "versions" })?
+            Err(Error::CreateTable { reason: "versions" })?;
         }
 
         // Snowflake "TARGET_LAG" clause for dybamic tables
         if target_lag.is_some() {
             Err(Error::CreateTable {
                 reason: "target lag",
-            })?
+            })?;
         }
         // Snowflake "WAREHOUSE" clause for dybamic tables
         if warehouse.is_some() {
             Err(Error::CreateTable {
                 reason: "warehouse",
-            })?
+            })?;
         }
         // Snowflake "REFRESH_MODE" clause for dybamic tables
         if refresh_mode.is_some() {
             Err(Error::CreateTable {
                 reason: "refresh mode",
-            })?
+            })?;
         }
         // Snowflake "INITIALIZE" clause for dybamic tables
         if initialize.is_some() {
             Err(Error::CreateTable {
                 reason: "initialize",
-            })?
+            })?;
         }
         // Snowflake "REQUIRE USER" clause for dybamic tables
         if *require_user {
             Err(Error::CreateTable {
                 reason: "require user",
-            })?
+            })?;
         }
 
         let name = Self::parse_object_name(name)?;
@@ -1404,27 +1405,27 @@ impl Ast {
         if if_exists {
             Err(Error::AlterTable {
                 reason: "if exists",
-            })?
+            })?;
         }
         // sqlite doesn't support `ON` clause in alter table
         if only {
-            Err(Error::AlterTable { reason: "on" })?
+            Err(Error::AlterTable { reason: "on" })?;
         }
         // clickhouse syntax
         if on_cluster.is_some() {
             Err(Error::AlterTable {
                 reason: "on cluster",
-            })?
+            })?;
         }
         // hive syntax
         if location.is_some() {
-            Err(Error::AlterTable { reason: "location" })?
+            Err(Error::AlterTable { reason: "location" })?;
         }
         let name = Self::parse_object_name(name)?;
         if operations.len() != 1 {
             Err(Error::AlterTable {
                 reason: "only supports single operation",
-            })?
+            })?;
         }
         let operation = operations.first().unwrap().try_into()?;
         Ok(Ast::AlterTable { name, operation })
@@ -1438,13 +1439,13 @@ impl Ast {
                     Err(Error::FunctionArguments {
                         reason: "function clauses are not yet supported",
                         arguments: Box::new(args.clone()),
-                    })?
-                };
+                    })?;
+                }
                 if list.duplicate_treatment.is_some() {
                     Err(Error::FunctionArguments {
                         reason: "function duplicate treatment not supported",
                         arguments: Box::new(args.clone()),
-                    })?
+                    })?;
                 }
                 list.args
                     .iter()
@@ -1506,46 +1507,46 @@ impl Ast {
         if *if_not_exists {
             Err(Error::CreateIndex {
                 reason: "existance check",
-            })?
-        };
+            })?;
+        }
         if name.is_none() {
-            Err(Error::CreateIndex { reason: "nameless" })?
+            Err(Error::CreateIndex { reason: "nameless" })?;
         }
         if *concurrently {
             Err(Error::CreateIndex {
                 reason: "concurrent",
-            })?
+            })?;
         }
         if using.is_some() {
-            Err(Error::CreateIndex { reason: "using" })?
+            Err(Error::CreateIndex { reason: "using" })?;
         }
         if !include.is_empty() {
-            Err(Error::CreateIndex { reason: "include" })?
+            Err(Error::CreateIndex { reason: "include" })?;
         }
         if nulls_distinct.is_some() {
             Err(Error::CreateIndex {
                 reason: "distinct nulls",
-            })?
+            })?;
         }
         if !with.is_empty() {
-            Err(Error::CreateIndex { reason: "with" })?
+            Err(Error::CreateIndex { reason: "with" })?;
         }
         if predicate.is_some() {
             Err(Error::CreateIndex {
                 reason: "predicate",
-            })?
+            })?;
         }
         // PG only
         if !index_options.is_empty() {
             Err(Error::CreateIndex {
                 reason: "index options",
-            })?
+            })?;
         }
         // Mysql only
         if !alter_options.is_empty() {
             Err(Error::CreateIndex {
                 reason: "alter options",
-            })?
+            })?;
         }
         let columns = columns
             .iter()
@@ -1573,20 +1574,20 @@ impl Ast {
     fn parse_query(query: &sqlparser::ast::Query) -> Result<Ast> {
         // FIXME: support CTEs
         if query.with.is_some() {
-            Err(Error::CTE)?
+            Err(Error::CTE)?;
         }
         if query.fetch.is_some() {
-            Err(Error::Fetch)?
+            Err(Error::Fetch)?;
         }
         // FIXME: support limits
         if query.limit_clause.is_some() {
-            Err(Error::Limit)?
+            Err(Error::Limit)?;
         }
         if !query.locks.is_empty() {
-            Err(Error::Locks)?
+            Err(Error::Locks)?;
         }
         if query.for_clause.is_some() {
-            Err(Error::For)?
+            Err(Error::For)?;
         }
         let select = match &*query.body {
             sqlparser::ast::SetExpr::Select(select) => &**select,
@@ -1620,7 +1621,7 @@ impl Ast {
                                     Err(Error::Count {
                                         reason: "function can only have single argument",
                                         args: args.clone(),
-                                    })?
+                                    })?;
                                 }
                                 let arg = args.pop().unwrap();
                                 Ok(Projection::Function(Function::Count(arg)))
@@ -1650,7 +1651,7 @@ impl Ast {
                         if values.len() != 2 {
                             Err(Error::CompoundIdentifier {
                                 length: values.len(),
-                            })?
+                            })?;
                         }
                         Ok(Projection::CompoundIdentifier(CompoundIdentifier {
                             table: values[0].value.clone(),
@@ -1669,7 +1670,7 @@ impl Ast {
         let selection = select
             .selection
             .as_ref()
-            .map(|selection| selection.try_into())
+            .map(TryInto::try_into)
             .transpose()?;
         let group_by = match &select.group_by {
             sqlparser::ast::GroupByExpr::Expressions(expr, modifier) if modifier.is_empty() => expr
@@ -1693,7 +1694,7 @@ impl Ast {
                     Err(Error::OrderBy {
                         reason: "order by interpolate is not supported",
                     })?;
-                };
+                }
                 match &order_by.kind {
                     sqlparser::ast::OrderByKind::All(_) => Err(Error::OrderBy {
                         reason: "order by all is not supported",
@@ -1704,7 +1705,7 @@ impl Ast {
                             if expression.with_fill.is_some() {
                                 Err(Error::OrderBy {
                                     reason: "with fill is not supported",
-                                })?
+                                })?;
                             }
                             let ident = match &expression.expr {
                                 sqlparser::ast::Expr::Identifier(ident) => ident.value.clone(),
@@ -1775,71 +1776,71 @@ impl Ast {
         } = insert;
         // FIXME:
         if or.is_some() {
-            Err(Error::Insert { reason: "or" })?
-        };
+            Err(Error::Insert { reason: "or" })?;
+        }
         // FIXME:
         if *ignore {
-            Err(Error::Insert { reason: "ignore" })?
+            Err(Error::Insert { reason: "ignore" })?;
         }
         if !*into {
             Err(Error::Insert {
                 reason: "missing into",
-            })?
+            })?;
         }
         if table_alias.is_some() {
             Err(Error::Insert {
                 reason: "table alias",
-            })?
+            })?;
         }
         if *overwrite {
             Err(Error::Insert {
                 reason: "overwrite",
-            })?
+            })?;
         }
         if !assignments.is_empty() {
             Err(Error::Insert {
                 reason: "assignments",
-            })?
+            })?;
         }
         if partitioned.is_some() || !after_columns.is_empty() {
             Err(Error::Insert {
                 reason: "partitioned",
-            })?
+            })?;
         }
         if *has_table_keyword {
             Err(Error::Insert {
                 reason: "table keyword",
-            })?
+            })?;
         }
         // FIXME:
         if on.is_some() {
             Err(Error::Insert {
                 reason: "on keyword",
-            })?
+            })?;
         }
         if returning.is_some() {
             Err(Error::Insert {
                 reason: "returning",
-            })?
+            })?;
         }
         if *replace_into {
-            Err(Error::Insert { reason: "replace" })?
+            Err(Error::Insert { reason: "replace" })?;
         }
         if priority.is_some() {
-            Err(Error::Insert { reason: "priority" })?
+            Err(Error::Insert { reason: "priority" })?;
         }
         if insert_alias.is_some() {
             Err(Error::Insert {
                 reason: "insert alias",
-            })?
+            })?;
         }
         if settings.is_some() {
-            Err(Error::Insert { reason: "settings" })?
+            Err(Error::Insert { reason: "settings" })?;
         }
         if format_clause.is_some() {
             Err(Error::Insert {
                 reason: "format clause",
-            })?
+            })?;
         }
         let name = match &table {
             sqlparser::ast::TableObject::TableName(name) => Self::parse_object_name(name)?,
@@ -1851,7 +1852,7 @@ impl Ast {
         };
         Ok(Ast::Insert {
             table: name,
-            columns: columns.iter().map(|ident| ident.to_string()).collect(),
+            columns: columns.iter().map(ToString::to_string).collect(),
             source: Self::parse_insert_source(source)?,
         })
     }
@@ -1863,7 +1864,7 @@ impl Ast {
                 .iter()
                 .map(|row| -> Result<Vec<InsertSource>> {
                     row.iter()
-                        .map(|value| value.try_into())
+                        .map(TryInto::try_into)
                         .collect::<Result<_>>()
                 })
                 .collect::<Result<_>>()?,
@@ -1891,22 +1892,22 @@ impl Ast {
         if from.is_some() {
             Err(Error::Update {
                 reason: "from table",
-            })?
+            })?;
         }
         if returning.is_some() {
             Err(Error::Update {
                 reason: "returning",
-            })?
+            })?;
         }
         if or.is_some() {
             Err(Error::Update {
                 reason: "update with OR is not supported",
-            })?
+            })?;
         }
         if limit.is_some() {
             Err(Error::Update {
                 reason: "update with LIMIT is not supported",
-            })?
+            })?;
         }
         let table = match &table.relation {
             sqlparser::ast::TableFactor::Table { name, .. } => Self::parse_object_name(name)?,
@@ -1930,7 +1931,7 @@ impl Ast {
             })
             .collect::<Result<Vec<UpdateAssignment>>>()?;
         let selection: Option<Selection> = selection
-            .map(|selection| selection.try_into())
+            .map(TryInto::try_into)
             .transpose()?;
         Ok(Ast::Update {
             table,
@@ -1943,21 +1944,21 @@ impl Ast {
         if !delete.tables.is_empty() {
             Err(Error::Delete {
                 reason: "multiple tables",
-            })?
+            })?;
         }
         if delete.using.is_some() {
-            Err(Error::Delete { reason: "using" })?
+            Err(Error::Delete { reason: "using" })?;
         }
         if delete.returning.is_some() {
             Err(Error::Delete {
                 reason: "returning",
-            })?
+            })?;
         }
         if !delete.order_by.is_empty() {
-            Err(Error::Delete { reason: "order by" })?
+            Err(Error::Delete { reason: "order by" })?;
         }
         if delete.limit.is_some() {
-            Err(Error::Delete { reason: "limit" })?
+            Err(Error::Delete { reason: "limit" })?;
         }
 
         let tables = match &delete.from {
@@ -1969,7 +1970,7 @@ impl Ast {
         if tables.len() != 1 {
             Err(Error::Delete {
                 reason: "multiple tables",
-            })?
+            })?;
         }
 
         let from_clause = tables.as_slice().try_into()?;
@@ -1977,7 +1978,7 @@ impl Ast {
         let selection = delete
             .selection
             .as_ref()
-            .map(|selection| selection.try_into())
+            .map(TryInto::try_into)
             .transpose()?;
         Ok(Ast::Delete {
             from_clause,
@@ -2086,7 +2087,7 @@ impl Ast {
                         assignments.as_slice(),
                         from.as_ref(),
                         selection.as_ref(),
-                        returning.as_ref().map(|v| v.as_slice()),
+                        returning.as_ref().map(Vec::as_slice),
                         output.as_ref(),
                         or.as_ref(),
                         order_by.as_slice(),
@@ -2251,12 +2252,12 @@ impl Ast {
                     Function::Count(FunctionArg::Ident(ident)) => {
                         buf.write_all(b"COUNT(")?;
                         Self::write_quoted(dialect, buf, ident)?;
-                        buf.write_all(b")")?
+                        buf.write_all(b")")?;
                     }
                 },
                 Projection::NumericLiteral(value) => buf.write_all(value.as_bytes())?,
                 Projection::String(value) => Self::write_single_quoted(dialect, buf, value)?,
-            };
+            }
             if pos != projections.len() - 1 {
                 buf.write_all(b", ")?;
             }
@@ -2265,13 +2266,13 @@ impl Ast {
         match from_clause {
             FromClause::Table(name) => {
                 buf.write_all(b" FROM ")?;
-                Self::write_quoted(dialect, buf, name)?
+                Self::write_quoted(dialect, buf, name)?;
             }
             FromClause::None => (),
             FromClause::TableWithJoin(table) => {
                 buf.write_all(b" FROM ")?;
                 Self::write_quoted(dialect, buf, &table.name)?;
-                for table in table.join.iter() {
+                for table in &table.join {
                     match &table.operator {
                         JoinOperator::Join(selection) => {
                             buf.write_all(b" JOIN ")?;
@@ -2292,7 +2293,7 @@ impl Ast {
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
             Self::selection_to_sql(dialect, buf, selection)?;
-        };
+        }
 
         if !group_by.is_empty() {
             buf.write_all(b" GROUP BY (")?;
@@ -2314,7 +2315,7 @@ impl Ast {
                     OrderOption::Asc => buf.write_all(b" ASC")?,
                     OrderOption::Desc => buf.write_all(b" DESC")?,
                     OrderOption::None => (),
-                };
+                }
                 if pos != order_by.len() - 1 {
                     buf.write_all(b", ")?;
                 }
@@ -2343,7 +2344,7 @@ impl Ast {
                     buf.write_all(cast.as_bytes())?;
                 }
             }
-        };
+        }
         Ok(())
     }
 
@@ -2468,7 +2469,7 @@ impl Ast {
                 }
                 buf.write_all(b")")?;
             }
-        };
+        }
         Ok(())
     }
 
@@ -2493,14 +2494,14 @@ impl Ast {
                 UpdateValue::String(string) => Self::write_single_quoted(dialect, buf, string)?,
                 UpdateValue::Number(number) => buf.write_all(number.as_bytes())?,
                 UpdateValue::Placeholder => {
-                    buf.write_all(dialect.placeholder(pos + 1).as_bytes())?
+                    buf.write_all(dialect.placeholder(pos + 1).as_bytes())?;
                 }
             }
         }
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
             Self::selection_to_sql(dialect, buf, selection)?;
-        };
+        }
         Ok(())
     }
 
@@ -2523,7 +2524,7 @@ impl Ast {
         if let Some(selection) = selection.as_ref() {
             buf.write_all(b" WHERE ")?;
             Self::selection_to_sql(dialect, buf, selection)?;
-        };
+        }
         Ok(())
     }
 
@@ -2623,10 +2624,10 @@ impl Ast {
                 columns,
                 constraints,
             } => {
-                Self::create_table_to_sql(dialect, buf, *if_not_exists, name, columns, constraints)?
+                Self::create_table_to_sql(dialect, buf, *if_not_exists, name, columns, constraints)?;
             }
             Ast::AlterTable { name, operation } => {
-                Self::alter_table_to_sql(dialect, buf, name.as_str(), operation)?
+                Self::alter_table_to_sql(dialect, buf, name.as_str(), operation)?;
             }
             Ast::CreateIndex {
                 unique,
@@ -2678,14 +2679,14 @@ impl Ast {
                 selection,
             } => Self::delete_to_sql(dialect, buf, from_clause, selection.as_ref())?,
             Ast::DropTable { if_exists, name } => {
-                Self::drop_table_to_sql(dialect, buf, *if_exists, name)?
+                Self::drop_table_to_sql(dialect, buf, *if_exists, name)?;
             }
             Ast::DropIndex {
                 if_exists,
                 name,
                 table,
             } => Self::drop_index_to_sql(dialect, buf, *if_exists, name, table)?,
-        };
+        }
         let buf = std::mem::replace(buf, Cursor::new(Vec::new()));
         Ok(String::from_utf8(buf.into_inner())?)
     }

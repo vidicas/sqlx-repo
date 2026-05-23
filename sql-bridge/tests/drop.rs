@@ -33,8 +33,7 @@ fn drop_multiple_index() {
                 object_type: None
             }
         ),
-        "{:?}",
-        err
+        "{err:?}"
     );
 }
 
@@ -128,7 +127,7 @@ fn drop_index_no_table_name() {
     assert_eq!(
         err.to_string(),
         "unsupported drop index: table name required"
-    )
+    );
 }
 
 #[test]
@@ -145,5 +144,5 @@ fn drop_view() {
         ),
         "{err:?}",
     );
-    assert_eq!(err.to_string(), "unsupported drop: object type View")
+    assert_eq!(err.to_string(), "unsupported drop: object type View");
 }

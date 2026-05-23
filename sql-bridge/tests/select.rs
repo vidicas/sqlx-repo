@@ -317,8 +317,8 @@ fn select_with_join() {
 
     let res = parse(input);
     if let Err(e) = res {
-        println!("{e}")
-    };
+        println!("{e}");
+    }
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
@@ -347,8 +347,8 @@ fn select_with_inner_join() {
 
     let res = parse(input);
     if let Err(e) = res {
-        println!("{e}")
-    };
+        println!("{e}");
+    }
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();

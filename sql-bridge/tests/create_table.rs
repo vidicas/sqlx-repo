@@ -110,7 +110,7 @@ fn test_primary_key_creation() {
 
 #[test]
 fn test_all_supported_types() {
-    let query = r#"
+    let query = r"
     CREATE TABLE sample_types (
         id32 SERIAL PRIMARY KEY,
         i16 SMALLINT,
@@ -129,13 +129,13 @@ fn test_all_supported_types() {
         uuid UUID,
         bytes BYTEA,
         json JSON
-    )"#;
+    )";
     let mut ast = parse(query).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
-        r#"CREATE TABLE `sample_types` (
+        r"CREATE TABLE `sample_types` (
 `id32` INT PRIMARY KEY AUTO_INCREMENT,
 `i16` SMALLLINT,
 `i32` INT,
@@ -153,7 +153,7 @@ fn test_all_supported_types() {
 `uuid` CHAR(36),
 `bytes` BLOB,
 `json` JSON
-)"#,
+)",
         ast.to_sql(&MySqlDialect {}).unwrap()
     );
 
@@ -180,7 +180,7 @@ fn test_all_supported_types() {
         ast.to_sql(&PostgreSqlDialect {}).unwrap()
     );
     assert_eq!(
-        r#"CREATE TABLE `sample_types` (
+        r"CREATE TABLE `sample_types` (
 `id32` INTEGER PRIMARY KEY,
 `i16` INTEGER,
 `i32` INTEGER,
@@ -198,7 +198,7 @@ fn test_all_supported_types() {
 `uuid` UUID,
 `bytes` BLOB,
 `json` JSON
-)"#,
+)",
         ast.to_sql(&SQLiteDialect {}).unwrap()
     );
 }
@@ -253,14 +253,14 @@ fn test_composite_primary_key() {
 
 #[test]
 fn test_foreign_key() {
-    let input = r#"CREATE TABLE employees (
+    let input = r"CREATE TABLE employees (
         emp_id INT PRIMARY KEY,
         dept_id INT,
         location_id INT,
         name TEXT,
         FOREIGN KEY (dept_id, location_id)
             REFERENCES departments(dept_id, location_id)
-    )"#;
+    )";
 
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -268,24 +268,24 @@ fn test_foreign_key() {
 
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INT PRIMARY KEY,
 `dept_id` INT,
 `location_id` INT,
 `name` TEXT,
 FOREIGN KEY (`dept_id`, `location_id`) REFERENCES departments(`dept_id`, `location_id`)
-)"#
+)"
     );
 
     assert_eq!(
         ast.to_sql(&SQLiteDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INTEGER PRIMARY KEY,
 `dept_id` INTEGER,
 `location_id` INTEGER,
 `name` TEXT,
 FOREIGN KEY (`dept_id`, `location_id`) REFERENCES departments(`dept_id`, `location_id`)
-)"#
+)"
     );
 
     assert_eq!(
@@ -302,11 +302,11 @@ FOREIGN KEY ("dept_id", "location_id") REFERENCES departments("dept_id", "locati
 
 #[test]
 fn test_foreign_key_on_delete_cascade() {
-    let input = r#"CREATE TABLE employees (
+    let input = r"CREATE TABLE employees (
         emp_id INT PRIMARY KEY,
         dept_id INT,
         FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE CASCADE
-    )"#;
+    )";
 
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -314,20 +314,20 @@ fn test_foreign_key_on_delete_cascade() {
 
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INT PRIMARY KEY,
 `dept_id` INT,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE CASCADE
-)"#
+)"
     );
 
     assert_eq!(
         ast.to_sql(&SQLiteDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INTEGER PRIMARY KEY,
 `dept_id` INTEGER,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE CASCADE
-)"#
+)"
     );
 
     assert_eq!(
@@ -342,11 +342,11 @@ FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE CASCADE
 
 #[test]
 fn test_foreign_key_on_delete_set_null() {
-    let input = r#"CREATE TABLE employees (
+    let input = r"CREATE TABLE employees (
         emp_id INT PRIMARY KEY,
         dept_id INT,
         FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE SET NULL 
-    )"#;
+    )";
 
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -354,20 +354,20 @@ fn test_foreign_key_on_delete_set_null() {
 
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INT PRIMARY KEY,
 `dept_id` INT,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE SET NULL
-)"#
+)"
     );
 
     assert_eq!(
         ast.to_sql(&SQLiteDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INTEGER PRIMARY KEY,
 `dept_id` INTEGER,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE SET NULL
-)"#
+)"
     );
 
     assert_eq!(
@@ -382,11 +382,11 @@ FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE SET NULL
 
 #[test]
 fn test_foreign_key_on_delete_restrict() {
-    let input = r#"CREATE TABLE employees (
+    let input = r"CREATE TABLE employees (
         emp_id INT PRIMARY KEY,
         dept_id INT,
         FOREIGN KEY (dept_id) REFERENCES departments(dept_id) ON DELETE RESTRICT
-    )"#;
+    )";
 
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
@@ -394,20 +394,20 @@ fn test_foreign_key_on_delete_restrict() {
 
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INT PRIMARY KEY,
 `dept_id` INT,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE RESTRICT
-)"#
+)"
     );
 
     assert_eq!(
         ast.to_sql(&SQLiteDialect {}).unwrap(),
-        r#"CREATE TABLE `employees` (
+        r"CREATE TABLE `employees` (
 `emp_id` INTEGER PRIMARY KEY,
 `dept_id` INTEGER,
 FOREIGN KEY (`dept_id`) REFERENCES departments(`dept_id`) ON DELETE RESTRICT
-)"#
+)"
     );
 
     assert_eq!(
@@ -424,7 +424,7 @@ FOREIGN KEY ("dept_id") REFERENCES departments("dept_id") ON DELETE RESTRICT
 fn test_foreign_key_match_kind_unsupported() {
     for match_kind in ["SIMPLE", "PARTIAL", "FULL"] {
         let input = format!(
-            r#"
+            r"
                 CREATE TABLE orders (
                     id        INT PRIMARY KEY,
                     customer_id INT,
@@ -433,7 +433,7 @@ fn test_foreign_key_match_kind_unsupported() {
                         REFERENCES customers (id, country)
                         MATCH {match_kind} 
                 )
-            "#
+            "
         );
         let res = parse(input);
         assert!(res.is_err());

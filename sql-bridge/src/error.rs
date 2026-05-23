@@ -75,13 +75,13 @@ pub enum Error {
     TableValuedFunctions,
     ///  MSSQL-specific `WITH (...)` hints such as NOLOCK.
     TableWithHints,
-    /// Table time-travel, as supported by BigQuery and MSSQL.
+    /// Table time-travel, as supported by `BigQuery` and MSSQL.
     TableVersioning,
     /// Postgres.
     TableWithOrdinality,
     /// Mysql
     TableWithPartitions,
-    /// Optional PartiQL JsonPath: <https://partiql.org/dql/from.html>
+    /// Optional `PartiQL` `JsonPath`: <https://partiql.org/dql/from.html>
     TableWithJsonPath,
     /// Optional table sample modifier
     /// See: <https://jakewheat.github.io/sql-overview/sql-2016-foundation-grammar.html#sample-clause>
@@ -198,12 +198,11 @@ impl std::fmt::Display for Error {
             Error::OnDeleteConstrait { referential_action } => {
                 write!(
                     f,
-                    "unsupported on delete constraint in foreign key: {}",
-                    referential_action
+                    "unsupported on delete constraint in foreign key: {referential_action}"
                 )
             }
             Error::PrimaryKey { reason } => {
-                write!(f, "unsupported primary key with {}", reason)
+                write!(f, "unsupported primary key with {reason}")
             }
             Error::PrimaryKeyWithExpression { expr } => {
                 write!(
@@ -212,13 +211,13 @@ impl std::fmt::Display for Error {
                 )
             }
             Error::ForeignKey { reason } => {
-                write!(f, "unsupported foreign key with {}", reason)
+                write!(f, "unsupported foreign key with {reason}")
             }
             Error::TableConstraint { constraint } => {
                 write!(f, "unsupported table constraint: {constraint:?}")
             }
             Error::CompoundIdentifier { length } => {
-                write!(f, "unsupported compound identifier with length {}", length)
+                write!(f, "unsupported compound identifier with length {length}")
             }
             Error::SelectionValue { value } => {
                 write!(f, "unsupporetd selection value: {value:?} ")
@@ -408,7 +407,7 @@ impl std::fmt::Display for Error {
                 )
             }
             Error::Io(err) => {
-                write!(f, "IO error: {}", err)
+                write!(f, "IO error: {err}")
             }
             Error::Parser(err) => {
                 write!(f, "Parser error: {err}")
