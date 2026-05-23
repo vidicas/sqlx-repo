@@ -73,3 +73,35 @@ fn update_order_by() {
     );
     assert_eq!(err.to_string(), "unsupported update: order by");
 }
+
+#[test]
+fn update_output_clause() {
+    let input = "UPDATE t1 SET a=1 OUTPUT INSERTED.a";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Update {
+                reason: "output clause"
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported update: output clause");
+}
+
+#[test]
+fn update_optimizer_hints() {
+    let input = "UPDATE /*+ INDEX(t pk) */ t SET a=1 WHERE id=1";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Update {
+                reason: "optimizer hints"
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported update: optimizer hints");
+}

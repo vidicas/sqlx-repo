@@ -165,6 +165,40 @@ fn drop_index_no_table_name() {
 }
 
 #[test]
+fn drop_table_purge() {
+    let input = "DROP TABLE foo PURGE";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "purge",
+                object_type: None
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported drop: purge");
+}
+
+#[test]
+fn drop_table_temporary() {
+    let input = "DROP TEMPORARY TABLE foo";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Drop {
+                reason: "temporary",
+                object_type: None
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported drop: temporary");
+}
+
+#[test]
 fn drop_view() {
     let input = "DROP VIEW foo_view";
     let err = parse(input).unwrap_err();

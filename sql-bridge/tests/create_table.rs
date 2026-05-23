@@ -460,3 +460,56 @@ fn create_table_partition_of() {
     );
     assert_eq!(err.to_string(), "unsupported create table: partition of");
 }
+
+#[test]
+fn create_table_diststyle() {
+    // Redshift DISTSTYLE clause
+    let input = "CREATE TABLE t1 (id INT) DISTSTYLE ALL";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::CreateTable {
+                reason: "diststyle"
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported create table: diststyle");
+}
+
+#[test]
+fn create_table_distkey() {
+    // Redshift DISTKEY clause
+    let input = "CREATE TABLE t1 (id INT) DISTKEY (id)";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(err, Error::CreateTable { reason: "distkey" }),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported create table: distkey");
+}
+
+#[test]
+fn create_table_sortkey() {
+    // Redshift SORTKEY clause
+    let input = "CREATE TABLE t1 (id INT) SORTKEY (id)";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(err, Error::CreateTable { reason: "sortkey" }),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported create table: sortkey");
+}
+
+#[test]
+fn create_table_backup() {
+    // Redshift BACKUP clause
+    let input = "CREATE TABLE t1 (id INT) BACKUP NO";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(err, Error::CreateTable { reason: "backup" }),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported create table: backup");
+}

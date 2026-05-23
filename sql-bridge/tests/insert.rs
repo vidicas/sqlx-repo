@@ -173,3 +173,33 @@ fn insert_priority() {
     assert!(matches!(err, Error::Insert { reason: "priority" }));
     assert_eq!(err.to_string(), "unsupported insert: priority");
 }
+
+#[test]
+fn insert_output_clause() {
+    // MSSQL OUTPUT clause
+    let input = "INSERT INTO t1 (a) OUTPUT INSERTED.id VALUES (1)";
+    let err = parse(input).unwrap_err();
+    assert!(matches!(
+        err,
+        Error::Insert {
+            reason: "output clause"
+        }
+    ));
+    assert_eq!(err.to_string(), "unsupported insert: output clause");
+}
+
+#[test]
+fn insert_optimizer_hints() {
+    let input = "INSERT /*+ INDEX(t pk) */ INTO t1 (a) VALUES (1)";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::Insert {
+                reason: "optimizer hints"
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported insert: optimizer hints");
+}
