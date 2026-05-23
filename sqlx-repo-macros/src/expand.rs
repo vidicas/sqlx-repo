@@ -142,7 +142,7 @@ impl Expander {
             for<'e> sqlx::Transaction<'e, D>: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
 
             // query execution
-            for<'e> <D as sqlx::Database>::Arguments<'e>: sqlx::IntoArguments<'e, D>,
+            for<'e> <D as sqlx::Database>::Arguments: sqlx::IntoArguments<D>,
 
             // db connection should be able to run migrations
             D::Connection: sqlx::migrate::Migrate,
@@ -649,7 +649,7 @@ where
         'e,
         D,
     >: std::ops::DerefMut<Target = <D as sqlx::Database>::Connection>,
-    for<'e> <D as sqlx::Database>::Arguments<'e>: sqlx::IntoArguments<'e, D>,
+    for<'e> <D as sqlx::Database>::Arguments: sqlx::IntoArguments<D>,
     D::Connection: sqlx::migrate::Migrate,
 {
     fn elided_lifetime_on_receiver<'life0, 'life1, 'future_lifetime, T>(
