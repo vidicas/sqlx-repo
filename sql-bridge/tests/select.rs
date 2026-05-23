@@ -315,10 +315,6 @@ fn select_with_join() {
         join baz on foo.id = baz.id
     ";
 
-    let res = parse(input);
-    if let Err(e) = res {
-        println!("{e}");
-    }
     let mut ast = parse(input).unwrap();
     assert!(ast.len() == 1);
     let ast = ast.pop().unwrap();

@@ -1,16 +1,11 @@
-#![allow(unused)]
-
 use std::{
-    any::Any,
     borrow::Cow,
     io::{Cursor, Write},
-    ops::Deref,
-    path::Display,
     slice,
 };
 
 use sqlparser::{
-    dialect::{self, Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
+    dialect::{self, MySqlDialect, PostgreSqlDialect, SQLiteDialect},
     keywords::Keyword,
     parser::Parser,
     tokenizer::{Token, Word},
@@ -144,7 +139,7 @@ pub struct ColumnOptions(u32);
 #[repr(u32)]
 pub enum ColumnOption {
     PrimaryKey = 1,
-    AutoInrement = 1 << 1,
+    AutoIncrement = 1 << 1,
     Nullable = 1 << 2,
     NotNull = 1 << 3,
     Unique = 1 << 4,
@@ -165,17 +160,17 @@ impl ColumnOptions {
     }
 
     fn set_auto_increment(mut self) -> Self {
-        self.0 |= ColumnOption::AutoInrement as u32;
+        self.0 |= ColumnOption::AutoIncrement as u32;
         self
     }
 
     fn unset_auto_increment(mut self) -> Self {
-        self.0 &= !(ColumnOption::AutoInrement as u32);
+        self.0 &= !(ColumnOption::AutoIncrement as u32);
         self
     }
 
     fn is_auto_increment(self) -> bool {
-        self.0 & ColumnOption::AutoInrement as u32 != 0
+        self.0 & ColumnOption::AutoIncrement as u32 != 0
     }
 
     fn set_nullable(mut self) -> Self {
@@ -196,11 +191,6 @@ impl ColumnOptions {
         self.0 & ColumnOption::NotNull as u32 != 0
     }
 
-    fn set_unique(mut self) -> Self {
-        self.0 |= ColumnOption::Unique as u32;
-        self
-    }
-
     fn is_unique(self) -> bool {
         self.0 & ColumnOption::Unique as u32 != 0
     }
@@ -209,7 +199,10 @@ impl ColumnOptions {
     fn mapping() -> &'static [(ColumnOption, fn(Self) -> bool)] {
         &[
             (ColumnOption::PrimaryKey, ColumnOptions::is_primary_key),
-            (ColumnOption::AutoInrement, ColumnOptions::is_auto_increment),
+            (
+                ColumnOption::AutoIncrement,
+                ColumnOptions::is_auto_increment,
+            ),
             (ColumnOption::Nullable, ColumnOptions::is_nullable),
             (ColumnOption::NotNull, ColumnOptions::is_not_null),
             (ColumnOption::Unique, ColumnOptions::is_unique),
@@ -266,9 +259,9 @@ impl TryFrom<&[sqlparser::ast::ColumnOptionDef]> for ColumnOptions {
     type Error = Error;
 
     fn try_from(values: &[sqlparser::ast::ColumnOptionDef]) -> Result<Self, Self::Error> {
-        values.iter().try_fold(
-            ColumnOptions::new(),
-            |mut options, value| -> Result<_, Error> {
+        values
+            .iter()
+            .try_fold(ColumnOptions::new(), |options, value| -> Result<_, Error> {
                 let options = match &value.option {
                     sqlparser::ast::ColumnOption::PrimaryKey(_) => options.set_primary_key(),
                     sqlparser::ast::ColumnOption::NotNull => options.set_not_null(),
@@ -279,8 +272,7 @@ impl TryFrom<&[sqlparser::ast::ColumnOptionDef]> for ColumnOptions {
                     })?,
                 };
                 Ok(options)
-            },
-        )
+            })
     }
 }
 
@@ -325,7 +317,7 @@ impl TryFrom<&sqlparser::ast::ReferentialAction> for OnDeleteAction {
             sqlparser::ast::ReferentialAction::Cascade => Ok(OnDeleteAction::Cascade),
             sqlparser::ast::ReferentialAction::Restrict => Ok(OnDeleteAction::Restrict),
             sqlparser::ast::ReferentialAction::SetNull => Ok(OnDeleteAction::SetNull),
-            other => Err(Error::OnDeleteConstrait {
+            other => Err(Error::OnDeleteConstraint {
                 referential_action: *other,
             })?,
         }
@@ -454,7 +446,7 @@ impl TryFrom<&[sqlparser::ast::TableConstraint]> for Constraints {
                     sqlparser::ast::TableConstraint::ForeignKey(
                         sqlparser::ast::ForeignKeyConstraint {
                             name,
-                            index_name,
+                            index_name: _,
                             columns,
                             foreign_table,
                             referred_columns,
@@ -849,11 +841,11 @@ impl TryFrom<&sqlparser::ast::Join> for Join {
     type Error = Error;
 
     fn try_from(table: &sqlparser::ast::Join) -> Result<Self, Self::Error> {
-        /// `ClickHouse` supports the optional `GLOBAL` keyword before the join operator.
-        /// See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
+        // `ClickHouse` supports the optional `GLOBAL` keyword before the join operator.
+        // See [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/select/join)
         if table.global {
             Err(Error::Keyword { keyword: "GLOBAL" })?;
-        };
+        }
 
         let name = table_relation_to_object_name(&table.relation)?;
         let operator = match &table.join_operator {
@@ -1014,7 +1006,7 @@ impl TryFrom<&sqlparser::ast::AlterTableOperation> for AlterTableOperation {
             sqlparser::ast::AlterTableOperation::DropColumn {
                 if_exists,
                 drop_behavior,
-                has_column_keyword,
+                has_column_keyword: _,
                 column_names,
             } => {
                 if *if_exists {
@@ -1116,14 +1108,14 @@ impl Ast {
             refresh_mode,
             initialize,
             require_user,
-            snapshot,
-            partition_of,
-            for_values,
-            with_storage_lifecycle_policy,
-            diststyle,
-            distkey,
-            sortkey,
-            backup,
+            snapshot: _,
+            partition_of: _,
+            for_values: _,
+            with_storage_lifecycle_policy: _,
+            diststyle: _,
+            distkey: _,
+            sortkey: _,
+            backup: _,
         }: &sqlparser::ast::CreateTable,
     ) -> Result<Ast> {
         if *or_replace {
@@ -1479,7 +1471,7 @@ impl Ast {
                     })
                     .collect::<Result<_>>()?
             }
-            sqlparser::ast::FunctionArguments::Subquery(query) => Err(Error::FunctionArguments {
+            sqlparser::ast::FunctionArguments::Subquery(_query) => Err(Error::FunctionArguments {
                 reason: "subquery",
                 arguments: Box::new(args.clone()),
             })?,
@@ -1556,7 +1548,7 @@ impl Ast {
                         sqlparser::ast::Expr::Identifier(sqlparser::ast::Ident {
                             value, ..
                         }) => Ok(value.clone()),
-                        expr => Err(Error::CreateIndexColumn {
+                        _expr => Err(Error::CreateIndexColumn {
                             column: Box::new(index_column.clone()),
                         })?,
                     }
@@ -1626,7 +1618,7 @@ impl Ast {
                                 let arg = args.pop().unwrap();
                                 Ok(Projection::Function(Function::Count(arg)))
                             }
-                            name => Err(Error::Function {
+                            _name => Err(Error::Function {
                                 name: function_name,
                             })?,
                         }
@@ -1684,7 +1676,7 @@ impl Ast {
                     })?,
                 })
                 .collect::<Result<Vec<GroupByParameter>>>()?,
-            expr => Err(Error::GroupBy {
+            _expr => Err(Error::GroupBy {
                 reason: "unsupported group by expression",
             })?,
         };
@@ -1709,7 +1701,7 @@ impl Ast {
                             }
                             let ident = match &expression.expr {
                                 sqlparser::ast::Expr::Identifier(ident) => ident.value.clone(),
-                                expr => Err(Error::OrderBy {
+                                _expr => Err(Error::OrderBy {
                                     reason: "unsupported order by expression",
                                 })?,
                             };
@@ -1766,13 +1758,13 @@ impl Ast {
             insert_alias,
             settings,
             format_clause,
-            insert_token,
-            optimizer_hints,
-            output,
-            multi_table_insert_type,
-            multi_table_into_clauses,
-            multi_table_when_clauses,
-            multi_table_else_clause,
+            insert_token: _,
+            optimizer_hints: _,
+            output: _,
+            multi_table_insert_type: _,
+            multi_table_into_clauses: _,
+            multi_table_when_clauses: _,
+            multi_table_else_clause: _,
         } = insert;
         // FIXME:
         if or.is_some() {
@@ -1875,16 +1867,16 @@ impl Ast {
 
     #[allow(clippy::too_many_arguments)]
     fn parse_update(
-        update_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
-        optimizer_hints: &[sqlparser::ast::OptimizerHint],
+        _update_token: &sqlparser::ast::helpers::attached_token::AttachedToken,
+        _optimizer_hints: &[sqlparser::ast::OptimizerHint],
         table: &sqlparser::ast::TableWithJoins,
         assignments: &[sqlparser::ast::Assignment],
         from: Option<&sqlparser::ast::UpdateTableFromKind>,
         selection: Option<&sqlparser::ast::Expr>,
         returning: Option<&[sqlparser::ast::SelectItem]>,
-        output: Option<&sqlparser::ast::OutputClause>,
+        _output: Option<&sqlparser::ast::OutputClause>,
         or: Option<&sqlparser::ast::SqliteOnConflict>,
-        order_by: &[sqlparser::ast::OrderByExpr],
+        _order_by: &[sqlparser::ast::OrderByExpr],
         limit: Option<&sqlparser::ast::Expr>,
     ) -> Result<Ast> {
         if from.is_some() {
@@ -2041,7 +2033,7 @@ impl Ast {
                         location,
                         on_cluster,
                         end_token,
-                        table_type,
+                        table_type: _,
                     }) => Self::parse_alter_table(
                         name,
                         *if_exists,
@@ -2059,10 +2051,10 @@ impl Ast {
                         object_type,
                         if_exists,
                         names,
-                        cascade,
-                        restrict,
-                        purge,
-                        temporary,
+                        cascade: _,
+                        restrict: _,
+                        purge: _,
+                        temporary: _,
                         table,
                     } => Self::parse_drop(*object_type, *if_exists, names, table.as_ref())?,
                     sqlparser::ast::Statement::Insert(insert) => Self::parse_insert(insert)?,
@@ -2145,11 +2137,11 @@ impl Ast {
                         }
                     }
                     buf.write_all(b") REFERENCES ")?;
-                    buf.write_all(foreign_table.as_bytes());
+                    buf.write_all(foreign_table.as_bytes())?;
                     buf.write_all(b"(")?;
                     for (pos, column) in referred_columns.iter().enumerate() {
                         Self::write_quoted(dialect, buf, column)?;
-                        if pos != columns.len() - 1 {
+                        if pos != referred_columns.len() - 1 {
                             buf.write_all(b", ")?;
                         }
                     }
@@ -2242,7 +2234,7 @@ impl Ast {
                 }
                 Projection::CompoundIdentifier(compound) => {
                     Self::write_quoted(dialect, buf, &compound.table)?;
-                    buf.write_all(b".");
+                    buf.write_all(b".")?;
                     Self::write_quoted(dialect, buf, &compound.column)?;
                 }
                 Projection::Function(function) => match function {
@@ -2274,13 +2266,13 @@ impl Ast {
                     match &table.operator {
                         JoinOperator::Join(selection) => {
                             buf.write_all(b" JOIN ")?;
-                            Self::write_quoted(dialect, buf, &table.name);
+                            Self::write_quoted(dialect, buf, &table.name)?;
                             buf.write_all(b" ON ")?;
                             Self::selection_to_sql(dialect, buf, selection)?;
                         }
                         JoinOperator::Inner(selection) => {
                             buf.write_all(b" INNER JOIN ")?;
-                            Self::write_quoted(dialect, buf, &table.name);
+                            Self::write_quoted(dialect, buf, &table.name)?;
                             buf.write_all(b" ON ")?;
                             Self::selection_to_sql(dialect, buf, selection)?;
                         }
@@ -2430,7 +2422,7 @@ impl Ast {
             Selection::Ident(ident) => Self::write_quoted(dialect, buf, ident)?,
             Selection::CompoundIdentifier(compound) => {
                 Self::write_quoted(dialect, buf, &compound.table)?;
-                buf.write_all(b".");
+                buf.write_all(b".")?;
                 Self::write_quoted(dialect, buf, &compound.column)?;
             }
             Selection::Number(number) => buf.write_all(number.as_bytes())?,
@@ -2536,7 +2528,7 @@ impl Ast {
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
         }
-        Self::write_quoted(dialect, buf, name);
+        Self::write_quoted(dialect, buf, name)?;
         Ok(())
     }
 
@@ -2551,7 +2543,7 @@ impl Ast {
         if if_exists {
             buf.write_all(b"IF EXISTS ")?;
         }
-        Self::write_quoted(dialect, buf, name);
+        Self::write_quoted(dialect, buf, name)?;
         if dialect.drop_index_requires_table() {
             buf.write_all(b" ON ")?;
             Self::write_quoted(dialect, buf, table)?;
@@ -2571,7 +2563,7 @@ impl Ast {
     }
 
     fn write_single_quoted(
-        dialect: &dyn ToQuery,
+        _dialect: &dyn ToQuery,
         buf: &mut dyn Write,
         input: impl AsRef<[u8]>,
     ) -> Result<()> {
@@ -2725,7 +2717,7 @@ impl ToQuery for MySqlDialect {
     fn emit_column_spec(
         &self,
         Column {
-            name,
+            name: _,
             data_type,
             options,
         }: &Column,
@@ -2746,7 +2738,7 @@ impl ToQuery for MySqlDialect {
                 Cow::Borrowed("BIGINT")
             }
             DataType::SmallSerial | DataType::Serial | DataType::BigSerial => Err(Error::Serial)?,
-            DataType::I16 => Cow::Borrowed("SMALLLINT"),
+            DataType::I16 => Cow::Borrowed("SMALLINT"),
             DataType::I32 => Cow::Borrowed("INT"),
             DataType::I64 => Cow::Borrowed("BIGINT"),
             DataType::F32 => Cow::Borrowed("REAL"),
@@ -2771,7 +2763,7 @@ impl ToQuery for MySqlDialect {
             .into_iter()
             .map(|option| match option {
                 ColumnOption::PrimaryKey => "PRIMARY KEY",
-                ColumnOption::AutoInrement => "AUTO_INCREMENT",
+                ColumnOption::AutoIncrement => "AUTO_INCREMENT",
                 ColumnOption::NotNull => "NOT NULL",
                 ColumnOption::Nullable => "NULL",
                 ColumnOption::Unique => "UNIQUE",
@@ -2806,13 +2798,13 @@ impl ToQuery for PostgreSqlDialect {
     fn emit_column_spec(
         &self,
         Column {
-            name,
+            name: _,
             data_type,
             options,
         }: &Column,
         buf: &mut dyn Write,
     ) -> Result<()> {
-        let mut options = *options;
+        let options = *options;
         let spec = match data_type {
             DataType::SmallSerial if options.is_primary_key() => Cow::Borrowed("SMALLSERIAL"),
             DataType::Serial if options.is_primary_key() => Cow::Borrowed("SERIAL"),
@@ -2827,7 +2819,7 @@ impl ToQuery for PostgreSqlDialect {
             DataType::I64 if options.is_primary_key() && options.is_auto_increment() => {
                 Cow::Borrowed("BIGSERIAL")
             }
-            DataType::I16 => Cow::Borrowed("SMALLLINT"),
+            DataType::I16 => Cow::Borrowed("SMALLINT"),
             DataType::I32 => Cow::Borrowed("INT"),
             DataType::I64 => Cow::Borrowed("BIGINT"),
             DataType::F32 => Cow::Borrowed("REAL"),
@@ -2851,7 +2843,7 @@ impl ToQuery for PostgreSqlDialect {
             .into_iter()
             .filter_map(|option| match option {
                 ColumnOption::PrimaryKey => Some("PRIMARY KEY"),
-                ColumnOption::AutoInrement => None,
+                ColumnOption::AutoIncrement => None,
                 ColumnOption::NotNull => Some("NOT NULL"),
                 ColumnOption::Nullable => Some("NULL"),
                 ColumnOption::Unique => Some("UNIQUE"),
@@ -2878,7 +2870,7 @@ impl ToQuery for SQLiteDialect {
     fn emit_column_spec(
         &self,
         Column {
-            name,
+            name: _,
             data_type,
             options,
         }: &Column,
@@ -2898,8 +2890,6 @@ impl ToQuery for SQLiteDialect {
                 options = options.unset_auto_increment();
                 Cow::Borrowed("INTEGER")
             }
-            DataType::I32 => Cow::Borrowed("INTEGER"),
-            DataType::I64 => Cow::Borrowed("INTEGER"),
             DataType::I16 => Cow::Borrowed("INTEGER"),
             DataType::I32 => Cow::Borrowed("INTEGER"),
             DataType::I64 => Cow::Borrowed("INTEGER"),
@@ -2924,7 +2914,7 @@ impl ToQuery for SQLiteDialect {
             .into_iter()
             .map(|option| match option {
                 ColumnOption::PrimaryKey => "PRIMARY KEY",
-                ColumnOption::AutoInrement => "AUTOINCREMENT",
+                ColumnOption::AutoIncrement => "AUTOINCREMENT",
                 ColumnOption::NotNull => "NOT NULL",
                 ColumnOption::Nullable => "NULL",
                 ColumnOption::Unique => "UNIQUE",

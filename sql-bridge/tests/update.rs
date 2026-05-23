@@ -49,13 +49,16 @@ fn update_returning() {
 
 #[test]
 fn update_or() {
-    let input = "UPDATE target_table SET key=value RETURNING table.id";
+    let input = "UPDATE OR REPLACE target_table SET key='value'";
     let err = parse(input).unwrap_err();
     assert!(matches!(
         err,
         Error::Update {
-            reason: "returning"
+            reason: "update with OR is not supported"
         }
     ));
-    assert_eq!(err.to_string(), "unsupported update: returning");
+    assert_eq!(
+        err.to_string(),
+        "unsupported update: update with OR is not supported"
+    );
 }

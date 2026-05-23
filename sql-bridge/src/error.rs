@@ -19,7 +19,7 @@ pub enum Error {
     ColumnOption {
         option: Box<ColumnOption>,
     },
-    OnDeleteConstrait {
+    OnDeleteConstraint {
         referential_action: ReferentialAction,
     },
     PrimaryKey {
@@ -195,7 +195,7 @@ impl std::fmt::Display for Error {
             Error::ColumnOption { option } => {
                 write!(f, "unsupported column option: {option:?}")
             }
-            Error::OnDeleteConstrait { referential_action } => {
+            Error::OnDeleteConstraint { referential_action } => {
                 write!(
                     f,
                     "unsupported on delete constraint in foreign key: {referential_action}"

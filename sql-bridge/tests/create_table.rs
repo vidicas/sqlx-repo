@@ -137,7 +137,7 @@ fn test_all_supported_types() {
     assert_eq!(
         r"CREATE TABLE `sample_types` (
 `id32` INT PRIMARY KEY AUTO_INCREMENT,
-`i16` SMALLLINT,
+`i16` SMALLINT,
 `i32` INT,
 `i64` BIGINT,
 `numeric` DECIMAL(10, 2),
@@ -160,7 +160,7 @@ fn test_all_supported_types() {
     assert_eq!(
         r#"CREATE TABLE "sample_types" (
 "id32" SERIAL PRIMARY KEY,
-"i16" SMALLLINT,
+"i16" SMALLINT,
 "i32" INT,
 "i64" BIGINT,
 "numeric" DECIMAL(10, 2),
