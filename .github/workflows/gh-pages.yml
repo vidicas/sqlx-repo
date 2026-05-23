@@ -39,6 +39,7 @@ jobs:
       - name: Build Project
         shell: bash
         run: |
+          export PATH="$CARGO_HOME/bin:$PATH"
           cd sqlx-repo-ui/
           ASSET_PREFIX="sqlx-repo" dx build --release
           cd ../target/dx/sqlx-repo-ui/release/web/public
