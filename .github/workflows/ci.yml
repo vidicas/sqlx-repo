@@ -1,0 +1,119 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: EmbarkStudios/cargo-deny-action@7343aaf3a9563e7c5e0e8bac3896a292217cb163  # v2.0.19
+        with:
+          command: check
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: root
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mysql:
+        image: mysql
+        env:
+          MYSQL_DATABASE: test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: stable
+      - run: cargo test --all-features
+
+  deploy:
+    name: deploy
+    needs: [fmt, clippy, deny, test]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@23ee8ab6b7397851bc11705bcdf46f2519ea0285  # v1.9.0
+      - name: Install Dioxus CLI
+        run: cargo binstall dioxus-cli --version 0.7.9 --no-confirm --force
+      - name: Build
+        run: |
+          cd sqlx-repo-ui/
+          ASSET_PREFIX="sqlx-repo" dx build --release
+          cd ../target/dx/sqlx-repo-ui/release/web/public
+          sed -i 's#/assets/#/sqlx-repo/assets/#g' index.html
+          sed -i 's#/assets/#/sqlx-repo/assets/#g' assets/sqlx-repo-ui-*.js
+          cp ./index.html ./404.html
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f  # v4
+        with:
+          branch: gh-pages
+          folder: target/dx/sqlx-repo-ui/release/web/public
+      - name: Dump stats on failure
+        if: failure()
+        run: |
+          echo "=== Current directory ===" && pwd
+          echo "=== cargo home bin ===" && ls $CARGO_HOME/bin
