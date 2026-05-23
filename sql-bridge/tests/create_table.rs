@@ -1,4 +1,4 @@
-use sql_bridge::{MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
+use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 
 #[test]
 fn test_serial_no_primary_key() {
@@ -443,4 +443,20 @@ fn test_foreign_key_match_kind_unsupported() {
             "{match_kind}"
         );
     }
+}
+
+#[test]
+fn create_table_partition_of() {
+    let input = "CREATE TABLE t1 PARTITION OF t2 DEFAULT";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::CreateTable {
+                reason: "partition of"
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported create table: partition of");
 }

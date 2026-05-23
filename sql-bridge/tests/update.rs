@@ -62,3 +62,14 @@ fn update_or() {
         "unsupported update: update with OR is not supported"
     );
 }
+
+#[test]
+fn update_order_by() {
+    let input = "UPDATE foo SET a=1 ORDER BY id";
+    let err = parse(input).unwrap_err();
+    assert!(
+        matches!(err, Error::Update { reason: "order by" }),
+        "{err:?}"
+    );
+    assert_eq!(err.to_string(), "unsupported update: order by");
+}
