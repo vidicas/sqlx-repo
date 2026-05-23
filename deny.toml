@@ -17,11 +17,9 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "OpenSSL",
     "CC0-1.0",
-    "MPL-2.0",
     "Zlib",
+    "CDLA-Permissive-2.0",
 ]
 
 [bans]
