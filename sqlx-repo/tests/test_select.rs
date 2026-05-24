@@ -1,4 +1,5 @@
 use anyhow::Result;
+use futures::{StreamExt, stream::FuturesUnordered};
 use sqlx_repo::prelude::*;
 
 mod migrations;
@@ -160,63 +161,67 @@ impl SelectRepo for DatabaseRepository {
 
 #[tokio::test]
 async fn test_select() {
-    for url in URLS {
-        let repo = <dyn SelectRepo>::new(url).await.unwrap();
-        repo.migrate().await.unwrap();
-        repo.setup().await.unwrap();
+    let mut repos = URLS
+        .into_iter()
+        .map(|url| async move {
+            let repo = <dyn SelectRepo>::new(url).await.unwrap();
+            repo.migrate().await.unwrap();
+            repo.setup().await.unwrap();
 
-        assert_eq!(
-            vec![1, 2, 3, 4, 5],
-            repo.select_order_asc().await.unwrap(),
-            "order asc at {url}"
-        );
-        assert_eq!(
-            vec![5, 4, 3, 2, 1],
-            repo.select_order_desc().await.unwrap(),
-            "order desc at {url}"
-        );
-        assert_eq!(
-            vec![1, 2, 3],
-            repo.select_limit().await.unwrap(),
-            "limit at {url}"
-        );
-        assert_eq!(
-            vec![3, 4],
-            repo.select_limit_offset().await.unwrap(),
-            "limit+offset at {url}"
-        );
-        assert_eq!(
-            vec![5, 4, 3],
-            repo.select_order_desc_limit().await.unwrap(),
-            "order desc+limit at {url}"
-        );
-        assert_eq!(
-            vec![3],
-            repo.select_where_eq(3).await.unwrap(),
-            "where at {url}"
-        );
-        assert_eq!(
-            vec![2, 4],
-            repo.select_where_or(2, 4).await.unwrap(),
-            "where or at {url}"
-        );
-        assert_eq!(5, repo.count_all().await.unwrap(), "count at {url}");
+            assert_eq!(
+                vec![1, 2, 3, 4, 5],
+                repo.select_order_asc().await.unwrap(),
+                "order asc at {url}"
+            );
+            assert_eq!(
+                vec![5, 4, 3, 2, 1],
+                repo.select_order_desc().await.unwrap(),
+                "order desc at {url}"
+            );
+            assert_eq!(
+                vec![1, 2, 3],
+                repo.select_limit().await.unwrap(),
+                "limit at {url}"
+            );
+            assert_eq!(
+                vec![3, 4],
+                repo.select_limit_offset().await.unwrap(),
+                "limit+offset at {url}"
+            );
+            assert_eq!(
+                vec![5, 4, 3],
+                repo.select_order_desc_limit().await.unwrap(),
+                "order desc+limit at {url}"
+            );
+            assert_eq!(
+                vec![3],
+                repo.select_where_eq(3).await.unwrap(),
+                "where at {url}"
+            );
+            assert_eq!(
+                vec![2, 4],
+                repo.select_where_or(2, 4).await.unwrap(),
+                "where or at {url}"
+            );
+            assert_eq!(5, repo.count_all().await.unwrap(), "count at {url}");
 
-        repo.setup_pairs().await.unwrap();
-        assert_eq!(
-            vec![1, 2, 3],
-            repo.select_distinct_category().await.unwrap(),
-            "distinct at {url}"
-        );
-        assert_eq!(
-            vec![1, 2, 2],
-            repo.select_group_by_count().await.unwrap(),
-            "group by at {url}"
-        );
-        assert_eq!(
-            vec![1, 1, 2, 2, 3],
-            repo.select_join().await.unwrap(),
-            "join at {url}"
-        );
-    }
+            repo.setup_pairs().await.unwrap();
+            assert_eq!(
+                vec![1, 2, 3],
+                repo.select_distinct_category().await.unwrap(),
+                "distinct at {url}"
+            );
+            assert_eq!(
+                vec![1, 2, 2],
+                repo.select_group_by_count().await.unwrap(),
+                "group by at {url}"
+            );
+            assert_eq!(
+                vec![1, 1, 2, 2, 3],
+                repo.select_join().await.unwrap(),
+                "join at {url}"
+            );
+        })
+        .collect::<FuturesUnordered<_>>();
+    while let Some(_) = repos.next().await { }
 }
