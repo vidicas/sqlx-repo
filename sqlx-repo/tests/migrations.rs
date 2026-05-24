@@ -18,11 +18,27 @@ const fn migration_select_pairs() -> Migration {
     )
 }
 
+const fn migration_seed_select_items() -> Migration {
+    migration!(
+        "seed select_items",
+        "insert into select_items values (1), (2), (3), (4), (5)"
+    )
+}
+
+const fn migration_seed_select_pairs() -> Migration {
+    migration!(
+        "seed select_pairs",
+        "insert into select_pairs values (1, 10), (1, 20), (2, 30), (2, 40), (3, 50)"
+    )
+}
+
 pub fn all_migrations() -> &'static [Migration] {
     static MIGRATIONS: &[Migration] = &[
         migration_test(),
         migration_select_items(),
         migration_select_pairs(),
+        migration_seed_select_items(),
+        migration_seed_select_pairs(),
     ];
     MIGRATIONS
 }
