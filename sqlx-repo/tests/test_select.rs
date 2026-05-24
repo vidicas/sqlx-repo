@@ -134,7 +134,7 @@ impl SelectRepo for DatabaseRepository {
 #[tokio::test]
 async fn test_select() {
     let mut repos = URLS
-        .into_iter()
+        .iter()
         .map(|url| async move {
             let repo = <dyn SelectRepo>::new(url).await.unwrap();
             repo.migrate().await.unwrap();
@@ -193,5 +193,5 @@ async fn test_select() {
             );
         })
         .collect::<FuturesUnordered<_>>();
-    while let Some(_) = repos.next().await { }
+    while let Some(()) = repos.next().await {}
 }
