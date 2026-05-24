@@ -15,6 +15,14 @@ authors = [
 license = "MIT or Apache-2.0"
 readme = "README.md"
 
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"

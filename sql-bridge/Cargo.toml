@@ -10,5 +10,5 @@ description = "SQL bridge for sqlx-repo"
 workspace = true
 
 [dependencies]
-sqlparser = "0.62.0"
+sqlparser = { version = "0.62.0", default-features = false, features = ["std"] }
 
