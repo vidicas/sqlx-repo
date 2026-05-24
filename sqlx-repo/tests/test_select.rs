@@ -18,18 +18,6 @@ impl SelectRepo for DatabaseRepository {
         Ok(())
     }
 
-    async fn setup(&self) -> Result<()> {
-        let delete = query!("delete from select_items");
-        sqlx::query(delete).execute(&self.pool).await?;
-        let mut tx = self.pool.start_transaction().await?;
-        let insert = query!("insert into select_items values (?)");
-        for id in 1i32..=5 {
-            sqlx::query(insert).bind(id).execute(&mut *tx).await?;
-        }
-        tx.commit().await?;
-        Ok(())
-    }
-
     async fn select_order_asc(&self) -> Result<Vec<i32>> {
         let q = query!("select * from select_items order by id asc");
         Ok(sqlx::query(q)
@@ -108,22 +96,6 @@ impl SelectRepo for DatabaseRepository {
         Ok(sqlx::query(q).fetch_one(&self.pool).await?.get::<i64, _>(0))
     }
 
-    async fn setup_pairs(&self) -> Result<()> {
-        let delete = query!("delete from select_pairs");
-        sqlx::query(delete).execute(&self.pool).await?;
-        let mut tx = self.pool.start_transaction().await?;
-        let insert = query!("insert into select_pairs values (?, ?)");
-        for (category, value) in [(1i32, 10i32), (1, 20), (2, 30), (2, 40), (3, 50)] {
-            sqlx::query(insert)
-                .bind(category)
-                .bind(value)
-                .execute(&mut *tx)
-                .await?;
-        }
-        tx.commit().await?;
-        Ok(())
-    }
-
     async fn select_distinct_category(&self) -> Result<Vec<i32>> {
         let q = query!("select distinct category from select_pairs order by category");
         Ok(sqlx::query(q)
@@ -166,7 +138,6 @@ async fn test_select() {
         .map(|url| async move {
             let repo = <dyn SelectRepo>::new(url).await.unwrap();
             repo.migrate().await.unwrap();
-            repo.setup().await.unwrap();
 
             assert_eq!(
                 vec![1, 2, 3, 4, 5],
@@ -205,7 +176,6 @@ async fn test_select() {
             );
             assert_eq!(5, repo.count_all().await.unwrap(), "count at {url}");
 
-            repo.setup_pairs().await.unwrap();
             assert_eq!(
                 vec![1, 2, 3],
                 repo.select_distinct_category().await.unwrap(),
