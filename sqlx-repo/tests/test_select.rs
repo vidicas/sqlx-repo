@@ -4,12 +4,6 @@ use sqlx_repo::prelude::*;
 
 mod migrations;
 
-const URLS: &[&str] = &[
-    "sqlite::memory:",
-    "postgres://postgres:root@127.0.0.1:5432/postgres",
-    "mysql://root:root@127.0.0.1:3306/mysql",
-];
-
 #[repo(Send + Sync + std::fmt::Debug)]
 impl SelectRepo for DatabaseRepository {
     async fn migrate(&self) -> Result<()> {
@@ -133,7 +127,12 @@ impl SelectRepo for DatabaseRepository {
 
 #[tokio::test]
 async fn test_select() {
-    let mut repos = URLS
+    let urls = &[
+        "sqlite::memory:",
+        "postgres://postgres:root@127.0.0.1:5432/postgres",
+        "mysql://root:root@127.0.0.1:3306/mysql",
+    ];
+    let mut repos = urls
         .iter()
         .map(|url| async move {
             let repo = <dyn SelectRepo>::new(url).await.unwrap();
