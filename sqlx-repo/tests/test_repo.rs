@@ -112,9 +112,8 @@ impl AllTypesRepo for DatabaseRepository {
     async fn round_trip(&self) -> Result<AllTypesRow> {
         let mut tx = self.pool.start_transaction().await?;
 
-        let insert_q = query!(
-            "INSERT INTO all_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        );
+        let insert_q =
+            query!("INSERT INTO all_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         sqlx::query(insert_q)
             .bind(1i32)
             .bind(1000i16)
@@ -198,7 +197,15 @@ async fn test_all_types_round_trip() {
             row.ts,
             "ts at {url}"
         );
-        assert_eq!(chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), row.dt, "dt at {url}");
-        assert_eq!(chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap(), row.tm, "tm at {url}");
+        assert_eq!(
+            chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            row.dt,
+            "dt at {url}"
+        );
+        assert_eq!(
+            chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            row.tm,
+            "tm at {url}"
+        );
     }
 }
