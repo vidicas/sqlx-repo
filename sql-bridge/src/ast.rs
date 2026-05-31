@@ -3060,7 +3060,7 @@ impl ToQuery for PostgreSqlDialect {
             DataType::I32 => Cow::Borrowed("INT"),
             DataType::I64 => Cow::Borrowed("BIGINT"),
             DataType::F32 => Cow::Borrowed("REAL"),
-            DataType::F64 => Cow::Borrowed("DOUBLE"),
+            DataType::F64 => Cow::Borrowed("DOUBLE PRECISION"),
             DataType::Bool => Cow::Borrowed("BOOLEAN"),
             DataType::String => Cow::Borrowed("TEXT"),
             DataType::Char(len) => Cow::Owned(format!("CHAR({len})")),

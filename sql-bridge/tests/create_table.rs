@@ -165,7 +165,7 @@ fn test_all_supported_types() {
 "i64" BIGINT,
 "numeric" DECIMAL(10, 2),
 "real" REAL,
-"double" DOUBLE,
+"double" DOUBLE PRECISION,
 "bool" BOOLEAN,
 "char" CHAR(5),
 "varchar" VARCHAR(100),
