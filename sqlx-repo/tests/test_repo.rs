@@ -239,7 +239,16 @@ impl DecimalRepo for DatabaseRepository {
 
 #[tokio::test]
 async fn test_decimal_round_trip() {
-    let val: Decimal = "123.45678".parse().unwrap();
+    let cases: &[&str] = &[
+        "0",
+        "1",
+        "123.45678",
+        "-123.45678",
+        "0.00001",
+        "-0.00001",
+        "999999999999999.99999",
+        "-999999999999999.99999",
+    ];
     let urls = [
         "sqlite::memory:",
         "postgres://postgres:root@127.0.0.1:5432/postgres",
@@ -248,7 +257,10 @@ async fn test_decimal_round_trip() {
     for url in urls {
         let repo = <dyn DecimalRepo>::new(url).await.unwrap();
         repo.migrate().await.unwrap();
-        let result = repo.round_trip(val).await.unwrap();
-        assert_eq!(val, result, "decimal at {url}");
+        for s in cases {
+            let val: Decimal = s.parse().unwrap();
+            let result = repo.round_trip(val).await.unwrap();
+            assert_eq!(val, result, "{s} at {url}");
+        }
     }
 }
