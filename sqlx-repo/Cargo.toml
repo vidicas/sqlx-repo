@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-repo"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 authors.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ repository = "https://github.com/vidicas/sqlx-repo"
 futures = "0.3"
 sqlx-repo-macros = { path = "../sqlx-repo-macros", version = "0.5.1" }
 serde_json = "1"
-sqlx = { version = "0.9", features = ["chrono", "json", "mysql", "postgres", "runtime-tokio", "sqlite", "tls-rustls", "uuid"] }
+sqlx = { version = "0.9", features = ["chrono", "json", "mysql", "postgres", "runtime-tokio", "rust_decimal", "sqlite", "tls-rustls", "uuid"] }
 url = "2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v7", "serde"] }

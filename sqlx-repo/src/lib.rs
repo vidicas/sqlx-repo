@@ -334,6 +334,7 @@
 //! ```sql
 //! DELETE FROM test WHERE key = 1;
 //! ```
+mod decimal;
 mod ext;
 mod migrator;
 
@@ -425,6 +426,7 @@ macro_rules! migrator {
 pub mod prelude {
     pub use super::{
         DatabaseRepository, SqlxDBNum,
+        decimal::Decimal,
         ext::AcquireExt,
         migration, migrator,
         migrator::{Migration, init_migrator},
