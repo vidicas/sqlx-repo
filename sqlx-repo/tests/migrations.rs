@@ -32,6 +32,30 @@ const fn migration_seed_select_pairs() -> Migration {
     )
 }
 
+pub const fn migration_all_types() -> Migration {
+    migration!(
+        "create all_types table",
+        "CREATE TABLE all_types (
+            id INT PRIMARY KEY,
+            small SMALLINT,
+            medium INT,
+            big BIGINT,
+            r32 REAL,
+            r64 DOUBLE PRECISION,
+            b BOOLEAN,
+            s TEXT,
+            ch CHAR(8),
+            vc VARCHAR(16),
+            blob BYTEA,
+            json JSON,
+            uuid UUID,
+            ts TIMESTAMP,
+            dt DATE,
+            tm TIME
+        )"
+    )
+}
+
 pub fn all_migrations() -> &'static [Migration] {
     static MIGRATIONS: &[Migration] = &[
         migration_test(),
@@ -39,6 +63,7 @@ pub fn all_migrations() -> &'static [Migration] {
         migration_select_pairs(),
         migration_seed_select_items(),
         migration_seed_select_pairs(),
+        migration_all_types(),
     ];
     MIGRATIONS
 }
