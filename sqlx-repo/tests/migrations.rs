@@ -56,6 +56,13 @@ pub const fn migration_all_types() -> Migration {
     )
 }
 
+pub const fn migration_decimal_types() -> Migration {
+    migration!(
+        "create decimal_types table",
+        "CREATE TABLE decimal_types (id INT PRIMARY KEY, amount NUMERIC(20, 5))"
+    )
+}
+
 pub fn all_migrations() -> &'static [Migration] {
     static MIGRATIONS: &[Migration] = &[
         migration_test(),
@@ -64,6 +71,7 @@ pub fn all_migrations() -> &'static [Migration] {
         migration_seed_select_items(),
         migration_seed_select_pairs(),
         migration_all_types(),
+        migration_decimal_types(),
     ];
     MIGRATIONS
 }

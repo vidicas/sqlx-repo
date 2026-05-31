@@ -88,6 +88,7 @@ impl Expander {
             for<'e> chrono::NaiveDate: sqlx::Type<D> + sqlx::Decode<'e, D>,
             for<'e> chrono::NaiveTime: sqlx::Type<D> + sqlx::Decode<'e, D>,
             for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Decode<'e, D>,
+            for<'e> sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Decode<'e, D>,
 
             // Encodable Types
             for<'e> bool: sqlx::Type<D> + sqlx::Encode<'e, D>,
@@ -108,7 +109,9 @@ impl Expander {
             for<'e> chrono::NaiveDate: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> chrono::NaiveTime: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Encode<'e, D>,
+            for<'e> sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> &'e uuid::Uuid: sqlx::Type<D> + sqlx::Encode<'e, D>,
+            for<'e> &'e sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> &'e sqlx::types::Json<serde_json::Value>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> &'e chrono::DateTime<chrono::Utc>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> &'e chrono::NaiveDateTime: sqlx::Type<D> + sqlx::Encode<'e, D>,
@@ -134,6 +137,7 @@ impl Expander {
             for<'e> Option<chrono::NaiveDate>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> Option<chrono::NaiveTime>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> Option<serde_json::Value>: sqlx::Type<D> + sqlx::Encode<'e, D>,
+            for<'e> Option<sqlx_repo::prelude::Decimal>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> Option<&'e uuid::Uuid>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> Option<&'e sqlx::types::Json<serde_json::Value>>: sqlx::Type<D> + sqlx::Encode<'e, D>,
             for<'e> Option<&'e chrono::DateTime<chrono::Utc>>: sqlx::Type<D> + sqlx::Encode<'e, D>,
@@ -601,6 +605,7 @@ where
     for<'e> chrono::NaiveDate: sqlx::Type<D> + sqlx::Decode<'e, D>,
     for<'e> chrono::NaiveTime: sqlx::Type<D> + sqlx::Decode<'e, D>,
     for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Decode<'e, D>,
+    for<'e> sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Decode<'e, D>,
     for<'e> bool: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> i8: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> i16: sqlx::Type<D> + sqlx::Encode<'e, D>,
@@ -619,7 +624,9 @@ where
     for<'e> chrono::NaiveDate: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> chrono::NaiveTime: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> serde_json::Value: sqlx::Type<D> + sqlx::Encode<'e, D>,
+    for<'e> sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> &'e uuid::Uuid: sqlx::Type<D> + sqlx::Encode<'e, D>,
+    for<'e> &'e sqlx_repo::prelude::Decimal: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> &'e sqlx::types::Json<
         serde_json::Value,
     >: sqlx::Type<D> + sqlx::Encode<'e, D>,
@@ -647,6 +654,7 @@ where
     for<'e> Option<chrono::NaiveDate>: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> Option<chrono::NaiveTime>: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> Option<serde_json::Value>: sqlx::Type<D> + sqlx::Encode<'e, D>,
+    for<'e> Option<sqlx_repo::prelude::Decimal>: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> Option<&'e uuid::Uuid>: sqlx::Type<D> + sqlx::Encode<'e, D>,
     for<'e> Option<
         &'e sqlx::types::Json<serde_json::Value>,

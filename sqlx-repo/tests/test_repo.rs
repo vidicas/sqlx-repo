@@ -209,3 +209,46 @@ async fn test_all_types_round_trip() {
         );
     }
 }
+
+#[repo(Send + Sync + std::fmt::Debug)]
+impl DecimalRepo for DatabaseRepository {
+    async fn migrate(&self) -> Result<()> {
+        let migrator = migrator!(&migrations::all_migrations()).await?;
+        migrator.run(&self.pool).await?;
+        Ok(())
+    }
+
+    async fn round_trip(&self, val: Decimal) -> Result<Decimal> {
+        let mut tx = self.pool.start_transaction().await?;
+
+        let insert_q = query!("INSERT INTO decimal_types VALUES (?, ?)");
+        sqlx::query(insert_q)
+            .bind(1i32)
+            .bind(val)
+            .execute(&mut *tx)
+            .await?;
+
+        let select_q = query!("SELECT amount FROM decimal_types WHERE id = ?");
+        let row = sqlx::query(select_q).bind(1i32).fetch_one(&mut *tx).await?;
+        let result = row.get::<Decimal, _>(0);
+
+        tx.rollback().await?;
+        Ok(result)
+    }
+}
+
+#[tokio::test]
+async fn test_decimal_round_trip() {
+    let val: Decimal = "123.45678".parse().unwrap();
+    let urls = [
+        "sqlite::memory:",
+        "postgres://postgres:root@127.0.0.1:5432/postgres",
+        "mysql://root:root@127.0.0.1:3306/mysql",
+    ];
+    for url in urls {
+        let repo = <dyn DecimalRepo>::new(url).await.unwrap();
+        repo.migrate().await.unwrap();
+        let result = repo.round_trip(val).await.unwrap();
+        assert_eq!(val, result, "decimal at {url}");
+    }
+}

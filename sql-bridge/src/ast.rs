@@ -3139,9 +3139,7 @@ impl ToQuery for SQLiteDialect {
             DataType::Bytes => Cow::Borrowed("BLOB"),
             DataType::Json => Cow::Borrowed("JSON"),
             DataType::Uuid => Cow::Borrowed("UUID"),
-            DataType::Decimal { precision, scale } => {
-                Cow::Owned(format!("DECIMAL({precision}, {scale})"))
-            }
+            DataType::Decimal { .. } => Cow::Borrowed("TEXT"),
             DataType::Date => Cow::Borrowed("TEXT"),
             DataType::Time => Cow::Borrowed("TEXT"),
             DataType::Timestamp => Cow::Borrowed("TEXT"),

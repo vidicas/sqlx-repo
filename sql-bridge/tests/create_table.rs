@@ -185,7 +185,7 @@ fn test_all_supported_types() {
 `i16` INTEGER,
 `i32` INTEGER,
 `i64` INTEGER,
-`numeric` DECIMAL(10, 2),
+`numeric` TEXT,
 `real` FLOAT,
 `double` DOUBLE,
 `bool` BOOLEAN,
