@@ -63,7 +63,7 @@ impl Expander {
     }
 
     fn where_clause(&self) -> WhereClause {
-        // FIXME: this if a bruteforce solution, need to find a better way to represent types which are supported by
+        // FIXME: this is a bruteforce solution, need to find a better way to represent types which are supported by
         // database
         parse_quote! (
             where D: sqlx::Database + sqlx_repo::SqlxDBNum,
@@ -358,7 +358,7 @@ impl Expander {
         )
     }
 
-    fn generate_trait_constuctor(&self) -> proc_macro2::TokenStream {
+    fn generate_trait_constructor(&self) -> proc_macro2::TokenStream {
         let trait_name = &self
             .trait_name
             .as_ref()
@@ -512,7 +512,7 @@ pub fn expand(
     Ok((
         item.to_token_stream(),
         expander.generate_trait_implementation(attrs),
-        expander.generate_trait_constuctor(),
+        expander.generate_trait_constructor(),
     ))
 }
 

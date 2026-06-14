@@ -11,7 +11,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
     let span = input.span();
-    let (impl_trait, generated_trait, trait_constuctor) = match expand::expand(&attrs, &mut input) {
+    let (impl_trait, generated_trait, trait_constructor) = match expand::expand(&attrs, &mut input) {
         Ok(tuple) => tuple,
         Err(e) => return e.into(),
     };
@@ -21,7 +21,7 @@ pub fn repo(attrs: TokenStream, input: TokenStream) -> TokenStream {
             #[allow(unused)]
             use sqlx_repo::__hidden::query;
             #impl_trait
-            #trait_constuctor
+            #trait_constructor
         };
         #generated_trait
     )

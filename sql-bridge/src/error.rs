@@ -223,10 +223,10 @@ impl std::fmt::Display for Error {
                 write!(f, "unsupported compound identifier with length {length}")
             }
             Error::SelectionValue { value } => {
-                write!(f, "unsupporetd selection value: {value:?} ")
+                write!(f, "unsupported selection value: {value:?} ")
             }
             Error::SelectionInList { selection } => {
-                write!(f, "unsupporetd in list selection: {selection:?} ")
+                write!(f, "unsupported in list selection: {selection:?} ")
             }
             Error::SelectionFromExpr { expr } => {
                 write!(f, "unsupported selection expr: {expr:?}")
