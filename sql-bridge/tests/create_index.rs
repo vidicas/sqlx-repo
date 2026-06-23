@@ -51,7 +51,7 @@ fn create_index_if_not_exists() {
     let input = "CREATE INDEX IF NOT EXISTS idx ON table_name (id, org)";
     assert_eq!(
         parse(input).unwrap_err().to_string(),
-        "unsupported create index: existance check"
+        "unsupported create index: existence check"
     );
 }
 
