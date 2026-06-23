@@ -97,6 +97,7 @@
 //!     i32 INTEGER,
 //!     i64 BIGINT,
 //!     numeric NUMERIC(10, 2),
+//!     decimal DECIMAL(10, 2),
 //!     real REAL,
 //!     double DOUBLE PRECISION,
 //!     bool BOOLEAN,
@@ -133,6 +134,20 @@
 //! Composite primary key supported as well:
 //! ```sql
 //! CREATE TABLE test(left INT, right INT, value TEXT, PRIMARY KEY (left, right));
+//! ```
+//!
+//! ### Column constraints
+//!
+//! `NOT NULL` is supported:
+//!
+//! ```sql
+//! CREATE TABLE test (id INTEGER NOT NULL, value TEXT NOT NULL);
+//! ```
+//!
+//! ### If not exists
+//!
+//! ```sql
+//! CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY);
 //! ```
 //!
 //! ### Foreign key
@@ -203,10 +218,6 @@
 //! CREATE UNIQUE INDEX idx ON table_name (id, org);
 //! ```
 //!
-//! ```sql
-//! CREATE INDEX IF NOT EXISTS idx ON table_name (id, org);
-//! ```
-//!
 //! ## Drop
 //!
 //! ```sql
@@ -266,6 +277,24 @@
 //! SELECT test.id, test.key, * FROM test;
 //! ```
 //!
+//! ### Distinct
+//!
+//! ```sql
+//! SELECT DISTINCT id FROM test;
+//! ```
+//!
+//! ### Literal constants
+//!
+//! Numeric and string literal projections are supported, including without a `FROM` clause:
+//!
+//! ```sql
+//! SELECT 1;
+//! ```
+//!
+//! ```sql
+//! SELECT 'constant';
+//! ```
+//!
 //! ### Count
 //!
 //! ```sql
@@ -288,6 +317,12 @@
 //! SELECT * FROM test ORDER BY id ASC, key DESC;
 //! ```
 //!
+//! Compound identifiers are supported in `ORDER BY`:
+//!
+//! ```sql
+//! SELECT t.id FROM t JOIN s ON t.id = s.id ORDER BY t.id ASC;
+//! ```
+//!
 //! ### Where
 //!
 //! ```sql
@@ -308,6 +343,22 @@
 //!
 //! ```sql
 //! SELECT * FROM test WHERE id NOT IN (1, "2", ?);
+//! ```
+//!
+//! ### Limit and offset
+//!
+//! ```sql
+//! SELECT * FROM test LIMIT 10;
+//! ```
+//!
+//! ```sql
+//! SELECT * FROM test LIMIT 10 OFFSET 20;
+//! ```
+//!
+//! MySQL-style `LIMIT offset, limit` is also accepted and normalized to `LIMIT ... OFFSET ...`:
+//!
+//! ```sql
+//! SELECT * FROM test LIMIT 20, 10;
 //! ```
 //!
 //! ### Join
