@@ -1541,7 +1541,7 @@ impl Ast {
     ) -> Result<Self> {
         if *if_not_exists {
             Err(Error::CreateIndex {
-                reason: "existance check",
+                reason: "existence check",
             })?;
         }
         if name.is_none() {
