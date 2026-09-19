@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use syn::spanned::Spanned as _;
 mod expand;
+mod migrations;
 mod query;
 
 #[proc_macro_attribute]
@@ -37,4 +38,9 @@ pub fn gen_query(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn query(input: TokenStream) -> TokenStream {
     query::query(input).into()
+}
+
+#[proc_macro]
+pub fn migrations(input: TokenStream) -> TokenStream {
+    migrations::migrations(input).into()
 }

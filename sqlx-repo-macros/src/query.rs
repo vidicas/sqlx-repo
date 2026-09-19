@@ -29,7 +29,7 @@ fn get_literal(input: &syn::Expr) -> Result<&syn::LitStr, proc_macro2::TokenStre
     }
 }
 
-fn build_queries(
+pub(crate) fn build_queries(
     span: proc_macro2::Span,
     query: &str,
 ) -> Result<(String, String, String), proc_macro2::TokenStream> {
