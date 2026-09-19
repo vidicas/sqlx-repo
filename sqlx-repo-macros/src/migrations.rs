@@ -13,7 +13,6 @@ struct MigrationFile {
     version: i64,
     description: String,
     sql: String,
-    path: PathBuf,
 }
 
 fn manifest_dir() -> PathBuf {
@@ -66,7 +65,6 @@ fn resolve_migrations(dir: &Path) -> Result<Vec<MigrationFile>, String> {
             version,
             description: description.replace('_', " "),
             sql,
-            path,
         });
     }
 
@@ -99,8 +97,6 @@ pub fn migrations(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
     }
 
     let mut entries = Vec::with_capacity(migrations.len());
-    // tracked via include_str! below so edits to these files trigger a rebuild
-    let mut file_paths = Vec::with_capacity(migrations.len());
     for migration in &migrations {
         let (postgres, sqlite, mysql) = match build_queries(span, &migration.sql) {
             Ok(queries) => queries,
@@ -113,13 +109,9 @@ pub fn migrations(input: proc_macro::TokenStream) -> proc_macro2::TokenStream {
                 queries: &[#postgres, #sqlite, #mysql],
             }
         });
-        file_paths.push(migration.path.to_string_lossy().into_owned());
     }
 
     quote_spanned! { span =>
-        {
-            #(const _: &str = include_str!(#file_paths);)*
-            &[#(#entries),*]
-        }
+        &[#(#entries),*]
     }
 }
