@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn basic_insert() {
     let input = "update test set value='foo' where key = 1";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

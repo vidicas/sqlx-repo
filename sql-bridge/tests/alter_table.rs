@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn rename_table() {
     let query = "alter table test rename to foo";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -25,7 +25,7 @@ fn rename_table() {
 fn add_column() {
     let query = "alter table test add column foo int";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -46,7 +46,7 @@ fn add_column() {
 fn drop_column() {
     let query = "alter table test drop column foo";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -67,7 +67,7 @@ fn drop_column() {
 fn rename_column() {
     let query = "alter table test rename column old_col to new_col";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

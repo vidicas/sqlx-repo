@@ -39,7 +39,7 @@ fn drop_table_restrict() {
 fn drop_index() {
     let input = "DROP INDEX idx ON tbl";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -75,7 +75,7 @@ fn drop_multiple_index() {
 fn drop_table() {
     let input = "DROP TABLE test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "DROP TABLE `test`");
@@ -106,7 +106,7 @@ fn drop_multiple_table() {
 fn drop_index_if_exists() {
     let input = "DROP INDEX IF EXISTS idx ON tbl";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -129,7 +129,7 @@ fn drop_index_if_exists() {
 fn drop_table_if_exists() {
     let input = "DROP TABLE IF EXISTS test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn test_simple_query() {
     let input = "select * from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -25,7 +25,7 @@ fn test_simple_query() {
 fn test_query_with_projection() {
     let input = "select id, key, * from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -46,7 +46,7 @@ fn test_query_with_projection() {
 fn test_query_with_compound_ident_and_all() {
     let input = "select test.id, test.key, * from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -67,7 +67,7 @@ fn test_query_with_compound_ident_and_all() {
 fn test_query_with_compound_ident_and_ident() {
     let input = "select test.id, key from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -101,7 +101,7 @@ fn query_with_too_many_ident_compounds() {
 fn test_query_with_predicates() {
     let input = "select * from test where id = 1 AND key = 'foo'";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -122,7 +122,7 @@ fn test_query_with_predicates() {
 fn test_count_function() {
     let input = "select count(*) from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -140,7 +140,7 @@ fn test_count_function() {
 
     let input = "select count(id) from test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -161,7 +161,7 @@ fn test_count_function() {
 fn test_query_with_group_by() {
     let input = "select key, count(*) from test group by key";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -182,7 +182,7 @@ fn test_query_with_group_by() {
 fn test_query_with_order_by() {
     let input = "select * from test order by id asc, key desc";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -223,7 +223,7 @@ fn test_query_with_compound_order_by() {
 fn select_literal_constant_number() {
     let input = "select 1";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "SELECT 1");
@@ -235,7 +235,7 @@ fn select_literal_constant_number() {
 fn select_literal_constant_string() {
     let input = "select '1'";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "SELECT '1'");
@@ -247,7 +247,7 @@ fn select_literal_constant_string() {
 fn select_with_placeholder() {
     let input = "select * from test where id = ?";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -268,7 +268,7 @@ fn select_with_placeholder() {
 fn select_with_multiple_placeholder() {
     let input = "select * from test where id = ? and value = ? or id = ?";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -289,7 +289,7 @@ fn select_with_multiple_placeholder() {
 fn select_in() {
     let input = "select * from test where id IN (1, '2', ?)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -310,7 +310,7 @@ fn select_in() {
 fn select_not_in() {
     let input = "select * from test where id NOT IN (1, '2', ?)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -336,7 +336,7 @@ fn select_with_join() {
     ";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -362,7 +362,7 @@ fn select_with_inner_join() {
     ";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -405,7 +405,7 @@ fn select_empty_projection() {
 fn select_all_projection() {
     let input = "select all col from foo";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
