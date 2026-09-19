@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn delete_from() {
     let input = "DELETE FROM test";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(ast.to_sql(&MySqlDialect {}).unwrap(), "DELETE FROM `test`");
@@ -21,7 +21,7 @@ fn delete_from() {
 fn delete_from_where() {
     let input = "DELETE FROM test WHERE key = 1";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

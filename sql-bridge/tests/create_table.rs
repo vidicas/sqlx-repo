@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn test_serial_no_primary_key() {
     let input = "CREATE TABLE test (id smallserial)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
@@ -21,7 +21,7 @@ fn test_serial_no_primary_key() {
 
     let input = "CREATE TABLE test (id serial)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
@@ -38,7 +38,7 @@ fn test_serial_no_primary_key() {
 
     let input = "CREATE TABLE test (id bigserial)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         ast.to_sql(&MySqlDialect {}).unwrap_err().to_string(),
@@ -58,7 +58,7 @@ fn test_serial_no_primary_key() {
 fn test_primary_key_creation() {
     let query = "CREATE TABLE test (id smallserial primary key)";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` SMALLINT PRIMARY KEY AUTO_INCREMENT\n)",
@@ -75,7 +75,7 @@ fn test_primary_key_creation() {
 
     let query = "CREATE TABLE test (id serial primary key)";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` INT PRIMARY KEY AUTO_INCREMENT\n)",
@@ -92,7 +92,7 @@ fn test_primary_key_creation() {
 
     let query = "CREATE TABLE test (id bigserial primary key)";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
     assert_eq!(
         "CREATE TABLE `test` (\n`id` BIGINT PRIMARY KEY AUTO_INCREMENT\n)",
@@ -131,7 +131,7 @@ fn test_all_supported_types() {
         json JSON
     )";
     let mut ast = parse(query).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -208,7 +208,7 @@ fn test_mysql_style_primary_key() {
     let input = "CREATE TABLE test (id integer primary key autoincrement)";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -232,7 +232,7 @@ fn test_composite_primary_key() {
     let input = "CREATE TABLE foo_baz(l int, r int, value text, primary key (l, r))";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -263,7 +263,7 @@ fn test_foreign_key() {
     )";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -309,7 +309,7 @@ fn test_foreign_key_on_delete_cascade() {
     )";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -349,7 +349,7 @@ fn test_foreign_key_on_delete_set_null() {
     )";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -389,7 +389,7 @@ fn test_foreign_key_on_delete_restrict() {
     )";
 
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

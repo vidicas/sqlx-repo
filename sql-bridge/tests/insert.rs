@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn basic_insert() {
     let input = "insert into test(id, key, value) values(null, 1, 'one'), (null, 2, 'two')";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -25,7 +25,7 @@ fn basic_insert() {
 fn basic_insert_with_placeholders() {
     let input = "insert into test(id, key, value) values(?, ?, ?), (?, ?, ?)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -46,7 +46,7 @@ fn basic_insert_with_placeholders() {
 fn basic_insert_with_placeholders_with_cast() {
     let input = "insert into test(id, key, value) values(?::json, ?::uuid, ?)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(

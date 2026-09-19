@@ -4,7 +4,7 @@ use sql_bridge::{Error, MySqlDialect, PostgreSqlDialect, SQLiteDialect, parse};
 fn create_index_unique() {
     let input = "CREATE UNIQUE INDEX idx ON table_name (id, org)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
@@ -27,7 +27,7 @@ fn create_index_unique() {
 fn create_index() {
     let input = "CREATE INDEX idx ON table_name (id, org)";
     let mut ast = parse(input).unwrap();
-    assert!(ast.len() == 1);
+    assert_eq!(ast.len(), 1);
     let ast = ast.pop().unwrap();
 
     assert_eq!(
