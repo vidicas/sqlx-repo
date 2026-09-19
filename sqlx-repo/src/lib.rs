@@ -81,8 +81,25 @@
 //! repo.insert().await.unwrap();
 //! assert_eq!(vec![1, 2], repo.select_all().await.unwrap());
 //!# });
-//!  
+//!
 //! ```
+//!
+//! # Migrations
+//!
+//! [`migrations!`] loads `.sql` files from a directory at compile time. Files must be named
+//! `<VERSION>_<DESCRIPTION>.sql` (e.g. `1_create_users.sql`).
+//!
+//! ```rust,ignore
+//! async fn migrate(&self) -> Result<()> {
+//!     let migrator = migrator!(migrations!("migrations")).await?;
+//!     migrator.run(&self.pool).await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Reversible migrations (`.up.sql`/`.down.sql` pairs) aren't supported. If you publish a crate
+//! using `migrations!` to crates.io, add the migrations directory to your Cargo.toml's
+//! `include` (or make sure `exclude` doesn't hide it), since it won't be packaged automatically.
 //!
 //! # Supported queries
 //!
@@ -474,12 +491,28 @@ macro_rules! migrator {
     }
 }
 
+/// Loads migrations from a directory of `.sql` files at compile time.
+///
+/// Files must be named `<VERSION>_<DESCRIPTION>.sql`, where `<VERSION>` parses as `i64`;
+/// files that don't match are ignored. Defaults to `migrations` relative to the crate root
+/// when called with no arguments; pass a path to use a different directory.
+///
+/// ```rust,ignore
+/// let migrator = migrator!(migrations!("migrations")).await?;
+/// ```
+#[macro_export]
+macro_rules! migrations {
+    ($($dir:tt)*) => {
+        ::sqlx_repo::__hidden::migrations!($($dir)*)
+    }
+}
+
 pub mod prelude {
     pub use super::{
         DatabaseRepository, SqlxDBNum,
         decimal::Decimal,
         ext::AcquireExt,
-        migration, migrator,
+        migration, migrations, migrator,
         migrator::{Migration, init_migrator},
     };
     pub use chrono;
@@ -493,5 +526,5 @@ pub mod prelude {
 
 #[doc(hidden)]
 pub mod __hidden {
-    pub use sqlx_repo_macros::{gen_query, query};
+    pub use sqlx_repo_macros::{gen_query, migrations, query};
 }
