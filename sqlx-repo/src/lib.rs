@@ -86,20 +86,22 @@
 //!
 //! # Migrations
 //!
-//! [`migrations!`] loads `.sql` files from a directory at compile time. Files must be named
-//! `<VERSION>_<DESCRIPTION>.sql` (e.g. `1_create_users.sql`).
+//! [`migrator!`] can also load `.sql` files from a directory at compile time instead of a list
+//! of Rust-defined migrations. Files must be named `<VERSION>_<DESCRIPTION>.sql` (e.g.
+//! `1_create_users.sql`).
 //!
 //! ```rust,ignore
 //! async fn migrate(&self) -> Result<()> {
-//!     let migrator = migrator!(migrations!("migrations")).await?;
+//!     // defaults to the `migrations` directory when called with no arguments
+//!     let migrator = migrator!("migrations").await?;
 //!     migrator.run(&self.pool).await?;
 //!     Ok(())
 //! }
 //! ```
 //!
-//! Reversible migrations (`.up.sql`/`.down.sql` pairs) aren't supported. If you publish a crate
-//! using `migrations!` to crates.io, add the migrations directory to your Cargo.toml's
-//! `include` (or make sure `exclude` doesn't hide it), since it won't be packaged automatically.
+//! Reversible migrations (`.up.sql`/`.down.sql` pairs) aren't supported. If you publish such a
+//! crate to crates.io, add the migrations directory to your Cargo.toml's `include` (or make sure
+//! `exclude` doesn't hide it), since it won't be packaged automatically.
 //!
 //! # Supported queries
 //!
@@ -484,26 +486,25 @@ macro_rules! migration {
     };
 }
 
-#[macro_export]
-macro_rules! migrator {
-    ($($migrations:tt)*) => {
-        ::sqlx_repo::prelude::init_migrator::<D>($($migrations)*)
-    }
-}
-
-/// Loads migrations from a directory of `.sql` files at compile time.
-///
-/// Files must be named `<VERSION>_<DESCRIPTION>.sql`, where `<VERSION>` parses as `i64`;
-/// files that don't match are ignored. Defaults to `migrations` relative to the crate root
-/// when called with no arguments; pass a path to use a different directory.
+/// Pass `&[Migration]` (or an expression producing one) to run Rust-defined migrations, as in
+/// the crate-level example above. Pass a directory path (or nothing, for the `migrations`
+/// directory) to instead load `.sql` files from disk at compile time: files must be named
+/// `<VERSION>_<DESCRIPTION>.sql`, where `<VERSION>` parses as `i64`, and files that don't match
+/// are ignored.
 ///
 /// ```rust,ignore
-/// let migrator = migrator!(migrations!("migrations")).await?;
+/// let migrator = migrator!("migrations").await?;
 /// ```
 #[macro_export]
-macro_rules! migrations {
-    ($($dir:tt)*) => {
-        ::sqlx_repo::__hidden::migrations!($($dir)*)
+macro_rules! migrator {
+    () => {
+        ::sqlx_repo::prelude::init_migrator::<D>(::sqlx_repo::__hidden::migrations!())
+    };
+    ($dir:literal) => {
+        ::sqlx_repo::prelude::init_migrator::<D>(::sqlx_repo::__hidden::migrations!($dir))
+    };
+    ($($migrations:tt)*) => {
+        ::sqlx_repo::prelude::init_migrator::<D>($($migrations)*)
     }
 }
 
@@ -512,7 +513,7 @@ pub mod prelude {
         DatabaseRepository, SqlxDBNum,
         decimal::Decimal,
         ext::AcquireExt,
-        migration, migrations, migrator,
+        migration, migrator,
         migrator::{Migration, init_migrator},
     };
     pub use chrono;
