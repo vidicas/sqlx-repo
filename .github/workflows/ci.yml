@@ -99,7 +99,7 @@ jobs:
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@23ee8ab6b7397851bc11705bcdf46f2519ea0285  # v1.9.0
       - name: Install Dioxus CLI
-        run: cargo binstall dioxus-cli --version 0.7.9 --no-confirm --force
+        run: cargo binstall dioxus-cli --version 0.7.10 --no-confirm --force
       - name: Build
         run: |
           cd sqlx-repo-ui/
