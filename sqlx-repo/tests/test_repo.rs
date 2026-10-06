@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use sqlx_repo::prelude::*;
 
@@ -92,7 +94,7 @@ pub struct AllTypesRow {
     b: bool,
     s: String,
     ch: String,
-    vc: String,
+    vc: Arc<str>,
     blob: Vec<u8>,
     json: serde_json::Value,
     uuid: uuid::Uuid,
@@ -115,16 +117,16 @@ impl AllTypesRepo for DatabaseRepository {
         let insert_q =
             query!("INSERT INTO all_types VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         sqlx::query(insert_q)
-            .bind(1i32)
-            .bind(1000i16)
-            .bind(100_000i32)
-            .bind(10_000_000_000i64)
-            .bind(1.5f32)
-            .bind(2.5f64)
+            .bind(1_i32)
+            .bind(1000_i16)
+            .bind(100_000_i32)
+            .bind(10_000_000_000_i64)
+            .bind(1.5_f32)
+            .bind(2.5_f64)
             .bind(true)
             .bind("hello")
-            .bind("world!!!")
-            .bind("sqlx-repo")
+            .bind("world!!!".to_string())
+            .bind(Arc::from("sqlx-repo"))
             .bind(b"\x01\x02\x03".as_slice())
             .bind(serde_json::json!({"k": 1}))
             .bind(uuid::Uuid::nil())
@@ -185,7 +187,7 @@ async fn test_all_types_round_trip() {
         assert!(row.b, "b at {url}");
         assert_eq!("hello", row.s, "s at {url}");
         assert_eq!("world!!!", row.ch, "ch at {url}"); // fill all 8 chars to avoid CHAR padding/stripping differences across DBs
-        assert_eq!("sqlx-repo", row.vc, "vc at {url}");
+        assert_eq!("sqlx-repo", &*row.vc, "vc at {url}");
         assert_eq!(vec![1u8, 2, 3], row.blob, "blob at {url}");
         assert_eq!(serde_json::json!({"k": 1}), row.json, "json at {url}");
         assert_eq!(uuid::Uuid::nil(), row.uuid, "uuid at {url}");
